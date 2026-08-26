@@ -1,0 +1,25 @@
+# Tested with Python 3.11 (see README - Python 3.14, the system default, has
+# no PyTorch wheels yet; a dedicated conda env "bc_seg" with Python 3.11 was
+# created for this project).
+#
+# CPU-only install (matches this project's dev machine - no CUDA GPU):
+#   pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
+#
+# If you have an NVIDIA GPU elsewhere (e.g. Kaggle/Colab), install the matching
+# CUDA build instead - see https://pytorch.org/get-started/locally/ - then
+# `pip install -r requirements.txt` for everything else below.
+
+torch
+torchvision
+
+numpy
+pandas
+pillow
+pyyaml
+matplotlib
+albumentations
+opencv-python-headless
+scipy
+scikit-image
+tqdm
+pydicom   # not used by the current 2D pipeline; kept for the future_3d module
