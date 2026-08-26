@@ -61,7 +61,7 @@ like" diversity.
 ### Tier 2 — cheap retrain (~10-20 min on Kaggle T4)
 | # | Idea | Why | Status |
 |---|---|---|---|
-| 2.1 | Add `pos_weight` to `BCEWithLogitsLoss`, computed from the real train-set pixel-level tumor:background ratio | Directly attacks issue #1 (the 7-epoch dead start) — gives the loss a real incentive to risk positive predictions early instead of collapsing to background | Not tried |
+| 2.1 | Add `pos_weight` to `BCEWithLogitsLoss` | Directly attacks issue #1 (the 7-epoch dead start) — gives the loss a real incentive to risk positive predictions early instead of collapsing to background | **Tried @ 2.0 — hurt, see changelog. Reverted to off.** |
 | 2.2 | Add LR warmup (e.g. linear warmup over the first ~200 steps) before the configured LR | Same target as 2.1, from a different angle — avoids a large early update pushing the model into the background-collapse basin | Not tried |
 | 2.3 | Switch `ReduceLROnPlateau` → `CosineAnnealingLR` (or increase its patience) | The plateau scheduler reacts to noise it can't distinguish from real stalling; a smooth schedule may reduce the epoch-8-27 oscillation (issue #2) | Not tried |
 | 2.4 | Raise `early_stopping.patience` (currently 15) | The run may have stopped before genuinely converging past epoch 12 — several later epochs (20: 0.748, 27: 0.719) came close without beating it | Not tried |
@@ -72,7 +72,7 @@ like" diversity.
 | 3.1 | Swap the from-scratch U-Net encoder for a pretrained one (e.g. ResNet34 via `segmentation_models_pytorch`) | Only 5 training patients is very little data for learning texture discrimination from scratch (issue #3); ImageNet-pretrained features are a standard, well-evidenced fix for small medical datasets | Not tried |
 | 3.2 | Train at full 512×512 instead of downsampled 256×256 | Median tumor is already small (1588px); downsampling to 256 shrinks it further, likely hurting small-lesion recall specifically. Kaggle T4 has memory headroom (batch 16 was comfortable at 256) | Not tried |
 | 3.3 | Patient-level k-fold cross-validation across the 5 train + 2 named valid patients | With only 7 named patients total, a single train/valid split's 0.7664 could be somewhat lucky/unlucky in which patients landed in validation. K-fold gives a real confidence interval | Not tried |
-| 3.4 | Ablate the current augmentation config (rotate/translate/scale/brightness/contrast) — try training with it off | Currently unknown whether augmentation is helping or contributing to the oscillation in issue #2 — worth an A/B | Not tried |
+| 3.4 | Boost augmentation (wider rotate/translate/scale, + horizontal flip, + ElasticTransform) and raise `weight_decay` + bottleneck spatial dropout | Run #2 revealed genuine overfitting (train_dice 0.88 vs val_dice 0.70) now that the metric bug is fixed — direct regularization is now the clear priority, ahead of the rest of Tier 3 | **In progress, see changelog** |
 
 ### Tier 4 — evaluation / infrastructure
 | # | Idea | Why | Status |
