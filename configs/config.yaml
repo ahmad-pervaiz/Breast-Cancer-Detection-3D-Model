@@ -1,0 +1,93 @@
+# =============================================================================
+# Configuration for 2D breast-tumor CT segmentation (U-Net baseline).
+# Every parameter used by training/inference is defined here, not hard-coded.
+# Override any value from the CLI, e.g.:
+#   python scripts/train.py --config configs/config.yaml --batch_size 8
+# =============================================================================
+
+# ---- Dataset -----------------------------------------------------------------
+# Root of the untouched FINAL DATASET folder (never written to by this project).
+dataset_root: "/run/media/ahmad-pervaiz/New Volume/BC_detection_Project/FINAL DATASET"
+
+train_image_dir: "Train"
+train_mask_dir: "Train_masks"
+valid_image_dir: "valid"
+valid_mask_dir: "valid_masks"
+test_image_dir: "test"          # no masks available - inference/qualitative only
+
+# Patient-level split bookkeeping (documentation + leakage-check assertions).
+# "Normal" and the generic "Tumors" bucket are not individual patients; they are
+# tracked separately. This list is what audit/train scripts verify against.
+train_patients: ["P1-Shukran-S4", "P2-Mumtaz-S2", "P2-Parveen-S4", "P3-Zareena-S2", "P5-Kousar-S4"]
+valid_patients: ["P1-Ruqayya", "P3-Rabia-S4"]
+valid_extra_groups: ["Tumors"]  # annotated, but different/unknown patients - valid-only, never train
+
+# Reuse the already-audited manifest instead of re-walking folders on every run.
+# Set to null to force a fresh directory scan via src/data/dataset.py.
+manifest_csv: "data/manifest.csv"
+
+# ---- Preprocessing / resizing --------------------------------------------------
+# Source images are already 512x512 uint8 grayscale-content PNGs (some stored as
+# 3-channel RGB with R==G==B - verified, no information lost by converting to L).
+image_size: 256          # resize target (H=W); configurable, drop to 128 for quick CPU smoke tests
+in_channels: 1            # single-channel grayscale in; all inputs converted to L
+mask_interpolation: "nearest"   # masks must stay discrete - never bilinear/bicubic
+image_interpolation: "bilinear"
+preserve_aspect_ratio: true     # pad-to-square before resize (no-op here: already square)
+
+# ---- Augmentation (train only; validation/test use identity transform) --------
+augmentation:
+  enabled: true
+  rotate_degrees: 10
+  translate_percent: 0.05
+  scale_range: [0.95, 1.05]
+  brightness_limit: 0.1
+  contrast_limit: 0.1
+  horizontal_flip: false   # OFF by default - anatomical laterality not confirmed medically justified
+
+# ---- Model ---------------------------------------------------------------------
+model:
+  name: "unet"
+  in_channels: 1
+  out_channels: 1
+  base_features: 32
+  depth: 4
+
+# ---- Training ------------------------------------------------------------------
+batch_size: 4
+num_workers: 2
+learning_rate: 0.0001
+weight_decay: 0.00001
+epochs: 50
+seed: 42
+
+dice_weight: 1.0
+bce_weight: 1.0
+
+lr_scheduler:
+  name: "reduce_on_plateau"
+  patience: 5
+  factor: 0.5
+  min_lr: 0.0000001
+
+early_stopping:
+  enabled: true
+  patience: 15
+  metric: "val_dice"    # must be validation-set metric, never test
+
+# ---- Inference / thresholds -----------------------------------------------------
+threshold: 0.5                     # probability >= threshold -> tumor pixel
+min_tumor_area_px: 20              # predicted-mask positive-pixel count above this -> tumor_present = True
+postprocess:
+  remove_small_components: false   # conservative default per project spec - off unless explicitly enabled
+  min_component_area_px: 10
+
+# ---- Output paths (all outside FINAL DATASET) -----------------------------------
+checkpoint_dir: "runs/segmentation/checkpoints"
+log_dir: "runs/segmentation/logs"
+plot_dir: "runs/segmentation/plots"
+prediction_dir: "runs/segmentation/predictions"
+test_prediction_dir: "runs/segmentation/test_predictions"
+
+# ---- Device ----------------------------------------------------------------------
+use_amp: true   # mixed precision - only actually used when CUDA is available
