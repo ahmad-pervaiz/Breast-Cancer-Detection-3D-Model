@@ -106,6 +106,48 @@ Applied automatically to `configs/config.yaml`: `threshold: 0.6`,
 `postprocess.remove_small_components: true`, `postprocess.min_component_area_px: 100`.
 This is now the default for all future inference and for Tier 2's retrain.
 
+### Run #2 — pos_weight=2.0 (2026-08-26, Kaggle T4) — regressed, reverted
+- Change from Run #1: `BCEWithLogitsLoss(pos_weight=2.0)` (local experiment,
+  not yet in shared code at the time - formalized into `losses.py` afterward).
+- Result: `best_val_dice = 0.6962` @ epoch 12 (**-7.0%** vs Run #1's 0.7664),
+  `val_iou = 0.6029` (**-7.8%**). Precision 0.7175→0.5658 (**-15.2%**) for
+  only +2.4% recall (0.6944→0.7185) — a bad trade, net loss on both Dice and
+  IoU. Detection accuracy 96.41%→94.48%.
+- **First real look at train/val gap since the metric fix**: `train_dice`
+  reached 0.8815 while `val_dice` peaked at 0.6962 then dropped to 0.54-0.62
+  — genuine overfitting, invisible before the train_dice computation was
+  fixed (see the earlier fix commit). With only 5 training patients, this is
+  a real and expected risk, not a fluke.
+- **Decision**: revert `pos_weight` to off (null). The mechanism worked
+  exactly as theorized (more willingness to predict positive pixels → more
+  recall) but the specific value tried gave up too much precision for too
+  little gain. Left available as a real config option (`pos_weight` in
+  `configs/config.yaml`, wired through `losses.py`) for a milder value later
+  if the overfitting-focused round below doesn't fully resolve issue #1.
+
+### Overfitting-attack round (2026-08-26, config pushed, retrain pending)
+Direct response to Run #2's overfitting finding — four changes at once,
+all reasoned through in this session:
+- `weight_decay`: 1e-5 → **1e-2** (direct L2 regularization)
+- New `model.bottleneck_dropout_p: 0.15` (`nn.Dropout2d`, deepest U-Net layer
+  only — see `src/models/unet.py`)
+- Augmentation boosted: rotate ±10°→±15°, translate 5%→10%, scale ±5%→±10%,
+  **horizontal_flip enabled** (reasoned: Run #1's mirror-side false-positive
+  pattern suggests a positional shortcut; training on left/right flips
+  directly counters that, and breast/chest-wall anatomy is mirror-symmetric
+  enough for this to be valid), **new ElasticTransform** (alpha=20, sigma=5,
+  p=0.3 — mild warp against exact-shape memorization)
+- `pos_weight` confirmed reverted to null (see Run #2 above)
+- Also fixed a related gap while making these changes: `postprocess.
+  remove_small_components` (Tier 1's tuned result) was only ever applied in
+  `scripts/inference.py`, never during training's own validation loop - so
+  `best_model.pth` selection didn't reflect what real inference achieves.
+  Now applied consistently in both `_train_one_epoch` and `_validate_one_epoch`.
+- **Result: pending** — retrain to be run on Kaggle (task tracked locally).
+  Compare against Run #1 (0.7664/0.6805, no post-processing) and the Tier 1
+  post-processed number (0.7914/0.7127) once this run's own post-processed
+  val_dice comes back.
+
 ### Run #1 — baseline (2026-08-26, Kaggle T4)
 - Config: `configs/config.yaml` defaults (image_size=256, batch_size=16 on Kaggle,
   lr=1e-4, dice_weight=bce_weight=1.0, threshold=0.5, no post-processing).
