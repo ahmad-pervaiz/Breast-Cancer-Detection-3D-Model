@@ -55,8 +55,8 @@ like" diversity.
 ### Tier 1 — no retraining needed (minutes, run against the existing checkpoint)
 | # | Idea | Why (grounded in evidence above) | Status |
 |---|---|---|---|
-| 1.1 | Enable `postprocess.remove_small_components` (currently off by default), tune `min_component_area_px` **on validation only** | Directly targets the small spurious secondary blobs seen in every montage — the real lesion blob is consistently much larger than the false-positive one | Not tried |
-| 1.2 | Sweep classification `threshold` (0.3–0.7) on validation, pick the Dice-maximizing value instead of the fixed 0.5 default | Precision (0.54–0.75) and recall (0.42–0.69) trade off a lot epoch to epoch; the fixed 0.5 threshold is a guess, not a tuned choice | Not tried |
+| 1.1 | Enable `postprocess.remove_small_components` (currently off by default), tune `min_component_area_px` **on validation only** | Directly targets the small spurious secondary blobs seen in every montage — the real lesion blob is consistently much larger than the false-positive one | **Done — helped, see changelog** |
+| 1.2 | Sweep classification `threshold` (0.3–0.7) on validation, pick the Dice-maximizing value instead of the fixed 0.5 default | Precision (0.54–0.75) and recall (0.42–0.69) trade off a lot epoch to epoch; the fixed 0.5 threshold is a guess, not a tuned choice | **Done — helped, see changelog** |
 
 ### Tier 2 — cheap retrain (~10-20 min on Kaggle T4)
 | # | Idea | Why | Status |
@@ -83,6 +83,28 @@ like" diversity.
 ---
 
 ## Changelog
+
+### Tier 1 — post-processing + threshold tuning (2026-08-26, local, no retraining)
+Ran `scripts/tune_postprocessing.py` against Run #1's `best_model.pth`: one
+forward pass per validation image (780 images, cached), then swept 9
+thresholds × 9 `min_component_area_px` cutoffs (81 combos) purely on
+validation. Full sweep: `runs/segmentation/postprocessing_tuning.csv`.
+
+| | threshold | min_component_area_px | val_dice | val_iou | tumor+dice | sensitivity | specificity |
+|---|---|---|---|---|---|---|---|
+| Baseline | 0.50 | 0 (off) | 0.7664 | 0.6805 | 0.6656 | 0.972 | 0.951 |
+| **Winner** | **0.60** | **100px** | **0.7914** | **0.7127** | **0.6707** | 0.943 | **1.000** |
+
+**val_dice +0.025, val_iou +0.032, specificity reached a perfect 1.000** —
+every false positive on a Normal validation image was eliminated by the
+100px component filter, confirming the "mirror-side spurious blob" pattern
+diagnosed above really was small, filterable noise rather than a deeper
+model problem. Small trade-off: sensitivity dropped 0.972→0.943 (a couple
+more missed true positives) — worth watching on the test set (task 4.1).
+
+Applied automatically to `configs/config.yaml`: `threshold: 0.6`,
+`postprocess.remove_small_components: true`, `postprocess.min_component_area_px: 100`.
+This is now the default for all future inference and for Tier 2's retrain.
 
 ### Run #1 — baseline (2026-08-26, Kaggle T4)
 - Config: `configs/config.yaml` defaults (image_size=256, batch_size=16 on Kaggle,
