@@ -62,6 +62,21 @@ def build_train_augmentations(aug_cfg: dict):
     ]
     if aug_cfg.get("horizontal_flip", False):
         transforms.append(A.HorizontalFlip(p=0.5))
+    elastic_cfg = aug_cfg.get("elastic_deform", {})
+    if elastic_cfg.get("enabled", False):
+        # Deliberately mild (small alpha/large sigma = gentle warp) - targets exact-shape
+        # memorization (see improving_model.md Tier 3.4) without producing anatomically
+        # unrealistic lesion shapes. Mask interpolation forced to nearest, same as Affine.
+        transforms.append(A.ElasticTransform(
+            alpha=elastic_cfg.get("alpha", 20),
+            sigma=elastic_cfg.get("sigma", 5),
+            interpolation=cv2.INTER_LINEAR,
+            mask_interpolation=cv2.INTER_NEAREST,
+            border_mode=cv2.BORDER_CONSTANT,
+            fill=0,
+            fill_mask=0,
+            p=elastic_cfg.get("p", 0.3),
+        ))
     return A.Compose(transforms)
 
 
