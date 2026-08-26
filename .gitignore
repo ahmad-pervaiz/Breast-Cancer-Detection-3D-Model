@@ -2,4 +2,4 @@ runs/
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
-kaggle_upload/
+kaggle_upload/*.zip
