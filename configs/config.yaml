@@ -23,28 +23,56 @@ image_interpolation: bilinear
 preserve_aspect_ratio: true
 augmentation:
   enabled: true
-  rotate_degrees: 10
-  translate_percent: 0.05
+  rotate_degrees: 15
+  translate_percent: 0.1
   scale_range:
-  - 0.95
-  - 1.05
+  - 0.9
+  - 1.1
   brightness_limit: 0.1
   contrast_limit: 0.1
-  horizontal_flip: false
+  # Enabled after Run #1's evidence: the model produced spurious false
+  # positives on the mirror-opposite side of the chest, suggesting a
+  # positional shortcut rather than true texture discrimination. Training
+  # with left/right flips directly teaches "lesions occur on either side
+  # equally" - the chest wall/breast region is anatomically mirror-symmetric
+  # enough for this to be a valid same-domain augmentation for this task.
+  horizontal_flip: true
+  elastic_deform:
+    # New in the overfitting-attack round (see improving_model.md Tier 3.4)
+    # - mild warp (small alpha, large sigma) targets exact-shape
+    # memorization without producing unrealistic lesion shapes.
+    enabled: true
+    alpha: 20
+    sigma: 5
+    p: 0.3
 model:
   name: unet
   in_channels: 1
   out_channels: 1
   base_features: 32
   depth: 4
+  # New in the overfitting-attack round (see improving_model.md Tier 3, and
+  # the "spatial dropout in bottleneck" idea from that round's discussion).
+  # Applied ONLY at the deepest layer (src/models/unet.py), not throughout
+  # the encoder.
+  bottleneck_dropout_p: 0.15
 batch_size: 4
 num_workers: 2
 learning_rate: 0.0001
-weight_decay: 1.0e-05
+# Raised 1e-5 -> 1e-2 in the overfitting-attack round: Run #2 (pos_weight=2.0)
+# showed a genuine 88% train_dice vs 70% val_dice gap once the metric bug was
+# fixed - real memorization with only 5 training patients. Direct L2
+# regularization against that. See improving_model.md changelog.
+weight_decay: 1.0e-02
 epochs: 50
 seed: 42
 dice_weight: 1.0
 bce_weight: 1.0
+# pos_weight=2.0 was tried in Run #2 and reverted: it traded a small recall
+# gain (+2.4%) for a large precision loss (-15%), a net loss on val_dice.
+# null = neutral/off (plain unweighted BCE, matching Run #1). See
+# src/training/losses.py and improving_model.md changelog.
+pos_weight: null
 lr_scheduler:
   name: reduce_on_plateau
   patience: 5
