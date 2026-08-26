@@ -14,6 +14,7 @@ import numpy as np
 import torch
 
 from src.data.preprocessing import PreprocessConfig, preprocess_image
+from src.inference.postprocess import remove_small_components
 from src.models.unet import build_model
 from src.visualization.visualize import save_prediction_set
 
@@ -33,13 +34,19 @@ def load_checkpoint(checkpoint_path: Path, device: torch.device):
 def predict_image(
     model: torch.nn.Module, image_path: Path, preprocess_cfg: PreprocessConfig,
     device: torch.device, threshold: float, min_tumor_area_px: int,
+    remove_small_components_px: int = 0,
 ) -> Dict:
+    """remove_small_components_px: connected-component area filter applied
+    after thresholding, before the tumor_detected/pixel_count decision.
+    0 (default) = off, matching the project's conservative-by-default policy."""
     image = preprocess_image(image_path, preprocess_cfg)  # (H, W) float32 [0,1]
     tensor = torch.from_numpy(image).unsqueeze(0).unsqueeze(0).float().to(device)
 
     logits = model(tensor)
     prob = torch.sigmoid(logits)[0, 0].cpu().numpy()
     pred_mask = (prob >= threshold).astype(np.uint8)
+    if remove_small_components_px > 0:
+        pred_mask = remove_small_components(pred_mask, remove_small_components_px)
 
     tumor_pixel_count = int(pred_mask.sum())
     total_pixels = pred_mask.size
@@ -58,8 +65,10 @@ def predict_image(
 def run_single_image(
     model, image_path: Path, checkpoint_path: Path, output_dir: Path,
     preprocess_cfg: PreprocessConfig, device: torch.device, threshold: float, min_tumor_area_px: int,
+    remove_small_components_px: int = 0,
 ) -> Dict:
-    result = predict_image(model, image_path, preprocess_cfg, device, threshold, min_tumor_area_px)
+    result = predict_image(model, image_path, preprocess_cfg, device, threshold, min_tumor_area_px,
+                            remove_small_components_px)
     stem = Path(image_path).stem
     save_prediction_set(result["image"], None, result["probability_map"], result["pred_mask"],
                          output_dir, stem)
@@ -77,6 +86,7 @@ def run_single_image(
 def run_folder_inference(
     model, input_root: Path, output_root: Path, preprocess_cfg: PreprocessConfig,
     device: torch.device, threshold: float, min_tumor_area_px: int,
+    remove_small_components_px: int = 0,
 ) -> List[Dict]:
     """Runs inference over every PNG under input_root (preserving subfolder
     structure, e.g. Normal/ and Tumors/, in output_root). Returns per-image
@@ -92,7 +102,8 @@ def run_folder_inference(
     for image_path in image_paths:
         rel = image_path.relative_to(input_root)
         out_dir = output_root / rel.parent
-        result = predict_image(model, image_path, preprocess_cfg, device, threshold, min_tumor_area_px)
+        result = predict_image(model, image_path, preprocess_cfg, device, threshold, min_tumor_area_px,
+                                remove_small_components_px)
         save_prediction_set(result["image"], None, result["probability_map"], result["pred_mask"],
                              out_dir, image_path.stem)
 

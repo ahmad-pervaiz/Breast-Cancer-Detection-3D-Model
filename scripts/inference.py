@@ -43,6 +43,9 @@ def parse_args():
                          "if not overridden below; the checkpoint's own training config is authoritative.")
     p.add_argument("--threshold", type=float, default=None)
     p.add_argument("--min_tumor_area_px", type=int, default=None)
+    p.add_argument("--remove_small_components_px", type=int, default=None,
+                    help="Connected-component area filter after thresholding, in pixels. "
+                         "0/unset = off (default; see configs/config.yaml postprocess block).")
     return p.parse_args()
 
 
@@ -55,6 +58,13 @@ def main():
     threshold = args.threshold if args.threshold is not None else train_cfg.get("threshold", default_cfg["threshold"])
     min_area = args.min_tumor_area_px if args.min_tumor_area_px is not None else train_cfg.get(
         "min_tumor_area_px", default_cfg["min_tumor_area_px"])
+    postprocess_cfg = train_cfg.get("postprocess", default_cfg.get("postprocess", {}))
+    if args.remove_small_components_px is not None:
+        remove_small_px = args.remove_small_components_px
+    elif postprocess_cfg.get("remove_small_components", False):
+        remove_small_px = postprocess_cfg.get("min_component_area_px", 0)
+    else:
+        remove_small_px = 0
     preprocess_cfg = PreprocessConfig(image_size=train_cfg["image_size"])
 
     input_path = Path(args.input)
@@ -62,10 +72,10 @@ def main():
 
     if input_path.is_file():
         run_single_image(model, input_path, Path(args.checkpoint), output_path,
-                          preprocess_cfg, device, threshold, min_area)
+                          preprocess_cfg, device, threshold, min_area, remove_small_px)
     elif input_path.is_dir():
         records = run_folder_inference(model, input_path, output_path, preprocess_cfg,
-                                        device, threshold, min_area)
+                                        device, threshold, min_area, remove_small_px)
         n_detected = sum(1 for r in records if r["tumor_detected"])
         print(f"\nProcessed {len(records)} images. Tumor detected in {n_detected}.")
 
