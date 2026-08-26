@@ -18,6 +18,7 @@ from src.data.dataset import BCTumorSegDataset, build_train_augmentations, load_
 from src.data.preprocessing import PreprocessConfig
 from src.data.validation import check_integrity, print_patient_split, print_summary, raise_if_broken
 from src.models.unet import build_model
+from src.training.experiment_tracking import close_clearml, init_clearml, log_checkpoint_artifact, log_epoch_metrics
 from src.training.losses import DiceBCELoss
 from src.training.metrics import MetricAccumulator
 from src.visualization.visualize import plot_training_curves, save_epoch_montage
@@ -184,6 +185,7 @@ def train(cfg: dict, smoke_test: bool = False, subset_size: Optional[int] = None
         d.mkdir(parents=True, exist_ok=True)
 
     save_config(cfg, log_dir.parent / "config_used.yaml")
+    clearml_task = init_clearml(cfg)
 
     preprocess_cfg = PreprocessConfig(
         image_size=cfg["image_size"],
@@ -240,6 +242,7 @@ def train(cfg: dict, smoke_test: bool = False, subset_size: Optional[int] = None
         print(f"  Valid detection: sensitivity={det['sensitivity_recall']} specificity={det['specificity']} "
               f"accuracy={det['accuracy']} f1={det['f1']}")
         print(f"  LR: {current_lr:.2e}")
+        log_epoch_metrics(clearml_task, epoch, train_metrics, val_metrics, current_lr)
 
         with open(log_csv_path, "a", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -266,6 +269,7 @@ def train(cfg: dict, smoke_test: bool = False, subset_size: Optional[int] = None
                         "val_dice": val_dice, "cfg": cfg},
                        checkpoint_dir / "best_model.pth")
             print(f"  -> New best model saved (val_dice={val_dice:.4f})")
+            log_checkpoint_artifact(clearml_task, "best_model", checkpoint_dir / "best_model.pth")
         else:
             epochs_without_improvement += 1
 
@@ -279,6 +283,13 @@ def train(cfg: dict, smoke_test: bool = False, subset_size: Optional[int] = None
     if not smoke_test:
         plot_training_curves(log_csv_path, plot_dir)
         print(f"\nSaved plots to {plot_dir}")
+
+    log_checkpoint_artifact(clearml_task, "last_model", checkpoint_dir / "last_model.pth")
+    log_checkpoint_artifact(clearml_task, "training_log", log_csv_path)
+    if not smoke_test:
+        for name in ["loss_curve.png", "dice_curve.png", "iou_curve.png"]:
+            log_checkpoint_artifact(clearml_task, name, plot_dir / name)
+    close_clearml(clearml_task)
 
     print(f"\nTraining complete. Best val_dice={best_val_dice:.4f}. "
           f"Checkpoints in {checkpoint_dir}, logs in {log_dir}.")

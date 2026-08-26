@@ -35,6 +35,10 @@ def parse_args():
     p.add_argument("--smoke_test", action="store_true",
                     help="Run a fast 2-epoch, small-subset sanity check instead of full training.")
     p.add_argument("--smoke_test_subset_size", type=int, default=8)
+    p.add_argument("--clearml", action="store_true",
+                    help="Force-enable ClearML tracking regardless of configs/config.yaml's "
+                         "clearml.enabled value. Requires ClearML credentials already configured "
+                         "(clearml-init locally, or CLEARML_API_* env vars / Kaggle Secrets remotely).")
     return p.parse_args()
 
 
@@ -47,6 +51,8 @@ def main():
         "seed": args.seed,
     }
     cfg = load_config(Path(args.config), overrides)
+    if args.clearml:
+        cfg.setdefault("clearml", {})["enabled"] = True
 
     if args.smoke_test:
         cfg["checkpoint_dir"] = "runs/segmentation_smoke_test/checkpoints"

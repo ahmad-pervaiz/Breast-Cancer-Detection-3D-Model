@@ -91,3 +91,12 @@ test_prediction_dir: "runs/segmentation/test_predictions"
 
 # ---- Device ----------------------------------------------------------------------
 use_amp: true   # mixed precision - only actually used when CUDA is available
+
+# ---- ClearML experiment tracking (optional) ---------------------------------------
+# Disabled by default so training works before you've run `clearml-init`.
+# Flip to true once ~/clearml.conf exists (see WALKTHROUGH.md). When enabled, logs
+# per-epoch metrics + uploads best_model.pth/last_model.pth/plots as artifacts.
+clearml:
+  enabled: false
+  project_name: "Breast Tumor Segmentation"
+  task_name: null   # null -> ClearML auto-generates a name per run

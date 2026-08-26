@@ -23,3 +23,4 @@ scipy
 scikit-image
 tqdm
 pydicom   # not used by the current 2D pipeline; kept for the future_3d module
+clearml   # optional experiment tracking - inert unless configs/config.yaml clearml.enabled=true
