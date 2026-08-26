@@ -72,7 +72,7 @@ like" diversity.
 | 3.1 | Swap the from-scratch U-Net encoder for a pretrained one (e.g. ResNet34 via `segmentation_models_pytorch`) | Only 5 training patients is very little data for learning texture discrimination from scratch (issue #3); ImageNet-pretrained features are a standard, well-evidenced fix for small medical datasets | Not tried |
 | 3.2 | Train at full 512×512 instead of downsampled 256×256 | Median tumor is already small (1588px); downsampling to 256 shrinks it further, likely hurting small-lesion recall specifically. Kaggle T4 has memory headroom (batch 16 was comfortable at 256) | Not tried |
 | 3.3 | Patient-level k-fold cross-validation across the 5 train + 2 named valid patients | With only 7 named patients total, a single train/valid split's 0.7664 could be somewhat lucky/unlucky in which patients landed in validation. K-fold gives a real confidence interval | Not tried |
-| 3.4 | Boost augmentation (wider rotate/translate/scale, + horizontal flip, + ElasticTransform) and raise `weight_decay` + bottleneck spatial dropout | Run #2 revealed genuine overfitting (train_dice 0.88 vs val_dice 0.70) now that the metric bug is fixed — direct regularization is now the clear priority, ahead of the rest of Tier 3 | **In progress, see changelog** |
+| 3.4 | Boost augmentation (wider rotate/translate/scale, + horizontal flip, + ElasticTransform) and raise `weight_decay` + bottleneck spatial dropout | Run #2 revealed genuine overfitting (train_dice 0.88 vs val_dice 0.70) now that the metric bug is fixed — direct regularization is now the clear priority, ahead of the rest of Tier 3 | **Done — helped a lot. val_dice 0.7914→0.8018, train/val gap 0.18→0.067. See changelog** |
 
 ### Tier 4 — evaluation / infrastructure
 | # | Idea | Why | Status |
@@ -143,10 +143,41 @@ all reasoned through in this session:
   `scripts/inference.py`, never during training's own validation loop - so
   `best_model.pth` selection didn't reflect what real inference achieves.
   Now applied consistently in both `_train_one_epoch` and `_validate_one_epoch`.
-- **Result: pending** — retrain to be run on Kaggle (task tracked locally).
-  Compare against Run #1 (0.7664/0.6805, no post-processing) and the Tier 1
-  post-processed number (0.7914/0.7127) once this run's own post-processed
-  val_dice comes back.
+- **Result: done.** 46 epochs (early-stopped, patience=15 from best epoch 31).
+  `best_val_dice = 0.8018` @ epoch 31, `val_iou = 0.7126` — beats Tier 1's
+  post-processed baseline (0.7914/0.7127; both numbers now include the same
+  threshold=0.6/100px-filter post-processing, so this is apples-to-apples).
+  At the best epoch: precision 0.7061, recall 0.7475, sensitivity 0.9838,
+  specificity 0.9930.
+- **Overfitting: substantially better.** Train/val gap at the best epoch is
+  only **0.067** (train_dice 0.869 vs val_dice 0.802) — down from Run #2's
+  0.18 gap (0.88 vs 0.70). The regularization bundle (weight_decay, dropout,
+  augmentation) did its job. The gap does creep back up over the 15
+  post-peak epochs (train_dice climbs to 0.886 by epoch 46 while val_dice
+  drifts in a 0.74-0.79 band) — early stopping is correctly catching this
+  rather than a longer run helping further.
+- **Issue #1 (epochs 1-10 dead start) is still present, unresolved** — this
+  round deliberately didn't touch it (pos_weight, its fix, was reverted after
+  Run #2). `val_dice` sits flat at exactly the Normal-image-fraction (0.367)
+  through epoch ~10 with sensitivity=0/specificity=1.0, then breaks out
+  sharply around epoch 11-12 — same signature as Run #1, just ~3 epochs
+  shorter this time (10 vs 7... actually slightly longer). A milder
+  `pos_weight` (e.g. 1.2-1.3, well short of 2.0) or LR warmup (Tier 2.2,
+  still untried) remains the right fix to try next, now that it can be
+  layered onto a version of the model that no longer overfits as badly.
+- **Issue #3 (mirror-side/positional false positives): mixed picture.**
+  Tumor-positive predictions (epoch 45 montage) no longer show the
+  contralateral spurious blob seen in Run #1 - clean single-lesion
+  predictions matching ground truth shape well. But Normal-image false
+  positives didn't disappear - one epoch-45 sample shows two fairly
+  substantial bilateral blobs (large enough to survive the 100px filter).
+  Note this montage is from epoch 45 (a late post-peak checkpoint saved for
+  visual tracking), not the actual best_model.pth from epoch 31 - the
+  deployed checkpoint's specificity (0.993) suggests this is not
+  representative of production behavior, but it's a real caveat until
+  confirmed by test-set inference (task 4.1, still pending).
+- Superseded checkpoint from the Tier-1-tuned run (best_val_dice=0.7914)
+  archived at `runs/segmentation_run1_archive/` rather than deleted.
 
 ### Run #1 — baseline (2026-08-26, Kaggle T4)
 - Config: `configs/config.yaml` defaults (image_size=256, batch_size=16 on Kaggle,
