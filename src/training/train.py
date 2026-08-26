@@ -75,11 +75,17 @@ def _make_loaders(cfg: dict, preprocess_cfg: PreprocessConfig, subset_size: Opti
     return train_loader, valid_loader
 
 
-def _train_one_epoch(model, loader, optimizer, criterion, device, scaler, use_amp) -> Dict[str, float]:
+def _train_one_epoch(model, loader, optimizer, criterion, device, scaler, use_amp,
+                      threshold: float, min_tumor_area_px: int) -> Dict[str, float]:
     model.train()
     total_loss = total_dice_loss = total_bce_loss = 0.0
-    dice_metric_sum = 0.0
     n_batches = 0
+    # Thresholded, empty-mask-aware accumulator - the SAME metric definition used
+    # for validation (see MetricAccumulator), so train_dice and val_dice are
+    # actually comparable. The raw soft Dice *loss* (dice_loss, logged separately)
+    # is structurally biased low on empty-mask images and must not be read as a
+    # Dice score - see the module-level note above train().
+    accumulator = MetricAccumulator(min_tumor_area_px=min_tumor_area_px, compute_hd95=False)
 
     for batch in loader:
         images = batch["image"].to(device)
@@ -102,14 +108,22 @@ def _train_one_epoch(model, loader, optimizer, criterion, device, scaler, use_am
         total_loss += loss.item()
         total_dice_loss += dice_l.item()
         total_bce_loss += bce_l.item()
-        dice_metric_sum += (1.0 - dice_l.item())  # train-time dice coefficient proxy
         n_batches += 1
 
+        with torch.no_grad():
+            probs = torch.sigmoid(logits).detach().cpu().numpy()
+            preds = (probs >= threshold).astype(np.uint8)
+            gts = masks.detach().cpu().numpy().astype(np.uint8)
+            for i in range(images.shape[0]):
+                accumulator.update(preds[i, 0], gts[i, 0])
+
+    summary = accumulator.summary()
     return {
         "loss": total_loss / n_batches,
         "dice_loss": total_dice_loss / n_batches,
         "bce_loss": total_bce_loss / n_batches,
-        "dice": dice_metric_sum / n_batches,
+        "dice": summary["overall_segmentation_including_normal"]["dice"],
+        "tumor_positive_dice": summary["tumor_positive_segmentation"]["dice"],
     }
 
 
@@ -214,7 +228,8 @@ def train(cfg: dict, smoke_test: bool = False, subset_size: Optional[int] = None
     epochs_without_improvement = 0
 
     log_csv_path = log_dir / "training.csv"
-    fieldnames = ["epoch", "train_loss", "train_dice", "val_loss", "val_dice", "val_iou",
+    fieldnames = ["epoch", "train_loss", "train_dice", "train_tumor_positive_dice",
+                  "val_loss", "val_dice", "val_iou",
                   "val_tumor_positive_dice", "val_tumor_positive_iou", "val_precision", "val_recall",
                   "val_sensitivity", "val_specificity", "learning_rate", "epoch_seconds"]
     with open(log_csv_path, "w", newline="") as f:
@@ -224,7 +239,8 @@ def train(cfg: dict, smoke_test: bool = False, subset_size: Optional[int] = None
 
     for epoch in range(1, epochs + 1):
         t0 = time.time()
-        train_metrics = _train_one_epoch(model, train_loader, optimizer, criterion, device, scaler, use_amp)
+        train_metrics = _train_one_epoch(model, train_loader, optimizer, criterion, device, scaler, use_amp,
+                                          cfg["threshold"], cfg["min_tumor_area_px"])
         val_metrics, fixed_samples = _validate_one_epoch(
             model, valid_loader, criterion, device, cfg["threshold"], cfg["min_tumor_area_px"]
         )
@@ -233,7 +249,8 @@ def train(cfg: dict, smoke_test: bool = False, subset_size: Optional[int] = None
         current_lr = optimizer.param_groups[0]["lr"]
 
         print(f"Epoch {epoch}/{epochs}  ({epoch_seconds:.1f}s)")
-        print(f"  Train: loss={train_metrics['loss']:.4f} dice={train_metrics['dice']:.4f}")
+        print(f"  Train: loss={train_metrics['loss']:.4f} dice={train_metrics['dice']:.4f} "
+              f"tumor+dice={train_metrics['tumor_positive_dice']}")
         print(f"  Valid: loss={val_metrics['loss']:.4f} dice={val_metrics['dice']:.4f} "
               f"iou={val_metrics['iou']:.4f} "
               f"tumor+dice={val_metrics['tumor_positive_dice']}  "
@@ -249,6 +266,7 @@ def train(cfg: dict, smoke_test: bool = False, subset_size: Optional[int] = None
             writer.writerow({
                 "epoch": epoch,
                 "train_loss": train_metrics["loss"], "train_dice": train_metrics["dice"],
+                "train_tumor_positive_dice": train_metrics["tumor_positive_dice"],
                 "val_loss": val_metrics["loss"], "val_dice": val_metrics["dice"], "val_iou": val_metrics["iou"],
                 "val_tumor_positive_dice": val_metrics["tumor_positive_dice"],
                 "val_tumor_positive_iou": val_metrics["tumor_positive_iou"],

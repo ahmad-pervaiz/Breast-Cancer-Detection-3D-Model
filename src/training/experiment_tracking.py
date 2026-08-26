@@ -53,6 +53,9 @@ def log_epoch_metrics(task, epoch: int, train_metrics: Dict[str, Any],
         if val_metrics.get("tumor_positive_dice") is not None:
             logger.report_scalar("dice_tumor_positive_only", "valid",
                                   value=val_metrics["tumor_positive_dice"], iteration=epoch)
+        if train_metrics.get("tumor_positive_dice") is not None:
+            logger.report_scalar("dice_tumor_positive_only", "train",
+                                  value=train_metrics["tumor_positive_dice"], iteration=epoch)
         det = val_metrics.get("detection", {})
         for name in ["sensitivity_recall", "specificity", "accuracy", "f1"]:
             if det.get(name) is not None:
