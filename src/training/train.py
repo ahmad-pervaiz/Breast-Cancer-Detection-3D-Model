@@ -17,6 +17,7 @@ from src.common import get_device, resolve_path, save_config, set_seed
 from src.data.dataset import BCTumorSegDataset, build_train_augmentations, load_manifest
 from src.data.preprocessing import PreprocessConfig
 from src.data.validation import check_integrity, print_patient_split, print_summary, raise_if_broken
+from src.inference.postprocess import remove_small_components
 from src.models.unet import build_model
 from src.training.experiment_tracking import close_clearml, init_clearml, log_checkpoint_artifact, log_epoch_metrics
 from src.training.losses import DiceBCELoss
@@ -75,8 +76,16 @@ def _make_loaders(cfg: dict, preprocess_cfg: PreprocessConfig, subset_size: Opti
     return train_loader, valid_loader
 
 
+def _apply_postprocess(preds: np.ndarray, min_component_area_px: int) -> np.ndarray:
+    if min_component_area_px <= 0:
+        return preds
+    for i in range(preds.shape[0]):
+        preds[i, 0] = remove_small_components(preds[i, 0], min_component_area_px)
+    return preds
+
+
 def _train_one_epoch(model, loader, optimizer, criterion, device, scaler, use_amp,
-                      threshold: float, min_tumor_area_px: int) -> Dict[str, float]:
+                      threshold: float, min_tumor_area_px: int, min_component_area_px: int = 0) -> Dict[str, float]:
     model.train()
     total_loss = total_dice_loss = total_bce_loss = 0.0
     n_batches = 0
@@ -113,6 +122,7 @@ def _train_one_epoch(model, loader, optimizer, criterion, device, scaler, use_am
         with torch.no_grad():
             probs = torch.sigmoid(logits).detach().cpu().numpy()
             preds = (probs >= threshold).astype(np.uint8)
+            preds = _apply_postprocess(preds, min_component_area_px)
             gts = masks.detach().cpu().numpy().astype(np.uint8)
             for i in range(images.shape[0]):
                 accumulator.update(preds[i, 0], gts[i, 0])
@@ -128,7 +138,8 @@ def _train_one_epoch(model, loader, optimizer, criterion, device, scaler, use_am
 
 
 @torch.no_grad()
-def _validate_one_epoch(model, loader, criterion, device, threshold, min_tumor_area_px):
+def _validate_one_epoch(model, loader, criterion, device, threshold, min_tumor_area_px,
+                         min_component_area_px: int = 0):
     model.eval()
     total_loss = total_dice_loss = total_bce_loss = 0.0
     n_batches = 0
@@ -150,6 +161,7 @@ def _validate_one_epoch(model, loader, criterion, device, threshold, min_tumor_a
 
         probs = torch.sigmoid(logits).cpu().numpy()
         preds = (probs >= threshold).astype(np.uint8)
+        preds = _apply_postprocess(preds, min_component_area_px)
         gts = masks.cpu().numpy().astype(np.uint8)
 
         for i in range(images.shape[0]):
@@ -214,7 +226,8 @@ def train(cfg: dict, smoke_test: bool = False, subset_size: Optional[int] = None
     print(f"\nModel: UNet | in_ch={cfg['model']['in_channels']} out_ch={cfg['model']['out_channels']} "
           f"base_features={cfg['model']['base_features']} depth={cfg['model']['depth']} | params={n_params:,}")
 
-    criterion = DiceBCELoss(dice_weight=cfg["dice_weight"], bce_weight=cfg["bce_weight"])
+    criterion = DiceBCELoss(dice_weight=cfg["dice_weight"], bce_weight=cfg["bce_weight"],
+                             pos_weight=cfg.get("pos_weight")).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg["learning_rate"], weight_decay=cfg["weight_decay"])
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="max", patience=cfg["lr_scheduler"]["patience"],
@@ -237,12 +250,17 @@ def train(cfg: dict, smoke_test: bool = False, subset_size: Optional[int] = None
 
     print(f"\n=== Starting training: {epochs} epochs ===\n")
 
+    postprocess_cfg = cfg.get("postprocess", {})
+    min_component_area_px = (postprocess_cfg.get("min_component_area_px", 0)
+                              if postprocess_cfg.get("remove_small_components", False) else 0)
+
     for epoch in range(1, epochs + 1):
         t0 = time.time()
         train_metrics = _train_one_epoch(model, train_loader, optimizer, criterion, device, scaler, use_amp,
-                                          cfg["threshold"], cfg["min_tumor_area_px"])
+                                          cfg["threshold"], cfg["min_tumor_area_px"], min_component_area_px)
         val_metrics, fixed_samples = _validate_one_epoch(
-            model, valid_loader, criterion, device, cfg["threshold"], cfg["min_tumor_area_px"]
+            model, valid_loader, criterion, device, cfg["threshold"], cfg["min_tumor_area_px"],
+            min_component_area_px,
         )
         scheduler.step(val_metrics["dice"])
         epoch_seconds = time.time() - t0

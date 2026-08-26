@@ -13,27 +13,32 @@ import torch.nn as nn
 
 
 class DoubleConv(nn.Module):
-    """(Conv3x3 -> BN -> ReLU) x 2"""
+    """(Conv3x3 -> BN -> ReLU) x 2, with optional spatial (channel-wise) dropout
+    at the end. dropout_p=0.0 (default) is a no-op - only the bottleneck uses
+    this in practice (see UNet.__init__)."""
 
-    def __init__(self, in_ch: int, out_ch: int):
+    def __init__(self, in_ch: int, out_ch: int, dropout_p: float = 0.0):
         super().__init__()
-        self.block = nn.Sequential(
+        layers = [
             nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(out_ch),
             nn.ReLU(inplace=True),
             nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(out_ch),
             nn.ReLU(inplace=True),
-        )
+        ]
+        if dropout_p > 0:
+            layers.append(nn.Dropout2d(dropout_p))  # zeroes whole feature channels, not individual pixels
+        self.block = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.block(x)
 
 
 class Down(nn.Module):
-    def __init__(self, in_ch: int, out_ch: int):
+    def __init__(self, in_ch: int, out_ch: int, dropout_p: float = 0.0):
         super().__init__()
-        self.block = nn.Sequential(nn.MaxPool2d(2), DoubleConv(in_ch, out_ch))
+        self.block = nn.Sequential(nn.MaxPool2d(2), DoubleConv(in_ch, out_ch, dropout_p))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.block(x)
@@ -64,10 +69,14 @@ class UNet(nn.Module):
         base_features: channel count after the first conv block; doubles at
             each downsampling stage (32 -> 64 -> 128 -> 256 -> ... ).
         depth: number of downsampling stages.
+        bottleneck_dropout_p: spatial (nn.Dropout2d) dropout applied ONLY at
+            the deepest layer (the true bottleneck), not throughout the
+            encoder - regularizes the most overfitting-prone layer without
+            crippling basic low/mid-level feature extraction. 0.0 = off.
     """
 
     def __init__(self, in_channels: int = 1, out_channels: int = 1,
-                 base_features: int = 32, depth: int = 4):
+                 base_features: int = 32, depth: int = 4, bottleneck_dropout_p: float = 0.0):
         super().__init__()
         if depth < 1:
             raise ValueError("depth must be >= 1")
@@ -75,7 +84,10 @@ class UNet(nn.Module):
         feats: List[int] = [base_features * (2 ** i) for i in range(depth + 1)]
 
         self.in_conv = DoubleConv(in_channels, feats[0])
-        self.downs = nn.ModuleList([Down(feats[i], feats[i + 1]) for i in range(depth)])
+        self.downs = nn.ModuleList([
+            Down(feats[i], feats[i + 1], dropout_p=bottleneck_dropout_p if i == depth - 1 else 0.0)
+            for i in range(depth)
+        ])
         self.ups = nn.ModuleList([
             Up(feats[i + 1], feats[i], feats[i]) for i in reversed(range(depth))
         ])
@@ -100,4 +112,5 @@ def build_model(cfg: dict) -> UNet:
         out_channels=cfg.get("out_channels", 1),
         base_features=cfg.get("base_features", 32),
         depth=cfg.get("depth", 4),
+        bottleneck_dropout_p=cfg.get("bottleneck_dropout_p", 0.0),
     )
