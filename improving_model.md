@@ -84,6 +84,27 @@ like" diversity.
 
 ## Changelog
 
+### Run #4 — LR-schedule-tuning branch (2026-08-26, Kaggle T4) — regressed, abandoned
+- Branch: `experiment/lr-schedule-tuning` (never merged to `main`). Changes:
+  `learning_rate` 1e-4→5e-5, `lr_scheduler.patience` 5→7,
+  `early_stopping.patience` 15→20, `epochs` 50→100.
+- Result (user-reported): `val_dice` 0.8018→0.7435 (-5.8%), `val_iou`
+  0.7126→0.5885 (-12.4%), **recall 0.7475→0.4411 (-30.6%, collapse)**,
+  precision 0.7061→0.8232 (artificially high - a symptom of under-predicting,
+  not genuine precision improvement), detection accuracy 98.72%→88.71%.
+- **Leading hypothesis, not confirmed**: halving the LR while keeping the
+  same strong regularization (weight_decay=1e-2, dropout=0.15) from the
+  overfitting-attack round either slowed/weakened escape from the epoch
+  1-10ish dead-start collapse (see Run #1/#3) or generally biased the model
+  toward under-predicting tumor area. Not confirmed against the actual
+  training curve - user chose not to investigate further this round.
+- **Decision**: abandon this branch as-is. `main` (Run #3's config:
+  learning_rate=1e-4, lr_scheduler.patience=5, early_stopping.patience=15,
+  epochs=50) remains the best validated result (val_dice=0.8018) and was
+  never touched by this experiment. Branch left in git history, not deleted,
+  in case the hypothesis above is worth revisiting later with the LR change
+  isolated from the epoch/patience changes (which weren't the likely culprit).
+
 ### Test-set inference (2026-08-26, local, Run #3's best_model.pth, epoch 31)
 First real look at genuinely unseen patients (`FINAL DATASET/test/`, 859
 images, 7 Tumor-side + 5 Normal-side patients never seen in train/valid).
