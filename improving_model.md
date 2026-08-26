@@ -77,12 +77,60 @@ like" diversity.
 ### Tier 4 — evaluation / infrastructure
 | # | Idea | Why | Status |
 |---|---|---|---|
-| 4.1 | Run `scripts/inference.py` against the held-out `test/` set (image-level detection metrics only — no fake masks) | Would confirm whether the mirror-side false-positive pattern (issue #3) also shows up on genuinely unseen patients, or was specific to this validation set | Not tried |
+| 4.1 | Run `scripts/inference.py` against the held-out `test/` set (image-level detection metrics only — no fake masks) | Would confirm whether the mirror-side false-positive pattern (issue #3) also shows up on genuinely unseen patients, or was specific to this validation set | **Done — see changelog. Major finding: one test patient (Amna) is a likely anatomical-level outlier, not a model failure** |
 | 4.2 | Route all future experiment variants through ClearML (already wired, see `WALKTHROUGH.md` §9) | Makes comparing Tier 2/3 variants against this baseline a dashboard lookup instead of manually diffing CSVs | Not tried |
 
 ---
 
 ## Changelog
+
+### Test-set inference (2026-08-26, local, Run #3's best_model.pth, epoch 31)
+First real look at genuinely unseen patients (`FINAL DATASET/test/`, 859
+images, 7 Tumor-side + 5 Normal-side patients never seen in train/valid).
+Image-level detection metrics only, per the no-fake-masks rule (no test
+masks exist). Full per-image output: `runs/segmentation/test_predictions/`.
+
+**Headline numbers**: sensitivity 0.978, specificity 0.687, precision 0.742,
+accuracy 0.827, F1 0.844 (tp=403, fp=140, fn=9, tn=307).
+
+**Tumor detection generalizes genuinely well**: 94.1%-100% caught per
+patient across all 7 Tumor-side test patients (5 of 7 at a perfect 100%,
+worst case Rehana 94.1%). This is the core clinical task and it holds up on
+real unseen patients.
+
+**Specificity's poor 0.687 is driven almost entirely by one patient.**
+Per-patient false-positive rate on the 5 Normal-side test patients:
+
+| Patient | FP rate |
+|---|---|
+| **Amna** | **96.9%** (93/96) |
+| Khalida | 22.3% |
+| Nazeer | 18.8% |
+| Nusrat | 21.3% |
+| Musarrat | **0.0%** (0/128) |
+
+Inspected several of Amna's false-positive predictions directly
+(`runs/segmentation/test_predictions/Normal/Amna *_original.png`) against a
+correctly-classified Musarrat image. **Amna's scans are visibly a different
+anatomical level** - shoulder/clavicle region, no heart or both-lung view -
+versus the mid-chest level (heart + both lungs + ribs) that every training
+image, every validation image, and every other test patient uses. The model
+is firing on shoulder/vascular tissue texture it was never trained to
+distinguish from tumor. This looks like a data-scope mismatch in what got
+included as "Normal" test data, not a core model failure - flagged for the
+user to review the source scans; not something to be fixed by retraining.
+
+**Excluding Amna: specificity = 0.866** (47 FP / 351 Normal images) - a more
+representative read of real-world specificity on the task's actual intended
+anatomical domain. Still meaningfully below validation's ~0.99, a real and
+expected generalization gap (validation patients are more similar to
+training patients than a genuinely new patient will be), but a very
+different picture than the raw 0.687 suggests.
+
+**Net read**: the model is in substantially better shape than the raw
+headline specificity implies. Recommend the user check whether Amna's scans
+belong in this test set's scope before drawing conclusions from the
+uncorrected number.
 
 ### Tier 1 — post-processing + threshold tuning (2026-08-26, local, no retraining)
 Ran `scripts/tune_postprocessing.py` against Run #1's `best_model.pth`: one
