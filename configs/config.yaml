@@ -58,13 +58,20 @@ model:
   bottleneck_dropout_p: 0.15
 batch_size: 4
 num_workers: 2
-learning_rate: 0.0001
+# Lowered 1e-4 -> 5e-5 in the LR-schedule-tuning branch: Run #3 hit
+# min-practical LR (6.25e-06, four halvings) by epoch ~40 of 46, well before
+# early stopping - the schedule was decaying faster than the run had budget
+# to recover from. See improving_model.md changelog.
+learning_rate: 0.00005
 # Raised 1e-5 -> 1e-2 in the overfitting-attack round: Run #2 (pos_weight=2.0)
 # showed a genuine 88% train_dice vs 70% val_dice gap once the metric bug was
 # fixed - real memorization with only 5 training patients. Direct L2
 # regularization against that. See improving_model.md changelog.
 weight_decay: 1.0e-02
-epochs: 50
+# Raised 50 -> 100 in the LR-schedule-tuning branch: gives the lower initial
+# LR + wider scheduler/early-stopping patience room to actually use a longer
+# horizon, while early stopping still caps it if progress genuinely stalls.
+epochs: 100
 seed: 42
 dice_weight: 1.0
 bce_weight: 1.0
@@ -75,12 +82,17 @@ bce_weight: 1.0
 pos_weight: null
 lr_scheduler:
   name: reduce_on_plateau
-  patience: 5
+  # 5 -> 7 in the LR-schedule-tuning branch: paired with the lower initial LR
+  # above, so each LR level gets more epochs to actually be explored before
+  # the scheduler halves it again.
+  patience: 7
   factor: 0.5
   min_lr: 1.0e-07
 early_stopping:
   enabled: true
-  patience: 15
+  # 15 -> 20 in the LR-schedule-tuning branch: gives more room to recover
+  # after an LR drop before concluding the run has genuinely plateaued.
+  patience: 20
   metric: val_dice
 threshold: 0.6
 min_tumor_area_px: 20
