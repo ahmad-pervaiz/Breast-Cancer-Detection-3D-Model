@@ -5,9 +5,9 @@ end to end: upload the dataset, run the notebook, get a trained checkpoint
 back onto your machine. No prior Kaggle experience assumed.
 
 > This machine has no NVIDIA GPU, so full training here would take ~15 hours
-> (measured: ~18 min/epoch × 50 epochs). Kaggle's free T4/P100 GPU should
-> bring that down to roughly 35–60 minutes — see `scripts/benchmark_timing.py`
-> if you want to re-measure this for yourself on either machine.
+> (measured: ~18 min/epoch × 50 epochs). On a Kaggle T4, measured **~20s/epoch**
+> — 50 epochs finishes in ~17 minutes. See `scripts/benchmark_timing.py` if you
+> want to re-measure this for yourself on either machine.
 
 ---
 
@@ -160,7 +160,31 @@ python scripts/inference.py \
 
 ---
 
-## 9. Iterating
+## 9. (Optional) ClearML experiment tracking
+
+Logs every epoch's metrics and uploads `best_model.pth`/`last_model.pth`/plots
+as artifacts to a ClearML dashboard, so you don't have to dig through
+`training.csv` or re-download a zip to compare runs.
+
+**One-time setup:**
+1. Sign up free at [app.clear.ml](https://app.clear.ml).
+2. **Settings → Workspace → Create new credentials** — copy the config block shown.
+3. Locally: `pip install clearml && clearml-init`, paste the block when prompted
+   (writes to `~/clearml.conf` — never paste credentials into a chat or commit them).
+4. On Kaggle: notebook menu → **Add-ons → Secrets** → add two secrets named
+   `CLEARML_API_ACCESS_KEY` and `CLEARML_API_SECRET_KEY` with the values from
+   step 2. The notebook's cell 6.5 picks these up automatically.
+
+**Using it:**
+- Locally: `python scripts/train.py --config configs/config.yaml --clearml`
+- On Kaggle: the training cell auto-detects the Secrets and adds `--clearml`
+  for you — nothing to edit.
+- Without either of the above, training runs exactly as before (ClearML is
+  fully optional — see `configs/config.yaml`'s `clearml.enabled: false` default).
+
+---
+
+## 10. Iterating
 
 To try a different config (more epochs, different image size, different
 loss weights): edit `configs/config.yaml`, commit, push to GitHub, then in
