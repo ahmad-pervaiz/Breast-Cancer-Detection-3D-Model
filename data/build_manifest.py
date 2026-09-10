@@ -81,7 +81,7 @@ def json_stats(json_path):
 
 def infer_patient_and_label(split_name, subfolder_name):
     """Folder-name convention: 'Normal' => Normal, 'Tumors' => Tumor (generic),
-    anything else (P1-Shukran-S4 etc.) => Tumor, patient_id = folder name."""
+    anything else (a named patient folder) => Tumor, patient_id = folder name."""
     if subfolder_name.lower() == "normal":
         return subfolder_name, "Normal"
     else:
