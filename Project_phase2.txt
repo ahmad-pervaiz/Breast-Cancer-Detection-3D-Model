@@ -302,32 +302,32 @@ FINAL DATASET/
 │
 ├── Train/
 │   ├── Normal/
-│   ├── P1-Shukran-S4/
-│   ├── P2-Mumtaz-S2/
-│   ├── P2-Parveen-S4/
-│   ├── P3-Zareena-S2/
-│   └── P5-Kousar-S4/
+│   ├── Patient_01/
+│   ├── Patient_02/
+│   ├── Patient_03/
+│   ├── Patient_04/
+│   └── Patient_05/
 │
 ├── Train_masks/
 │   ├── Normal/
-│   ├── P1-Shukran-S4/
-│   ├── P2-Mumtaz-S2/
-│   ├── P2-Parveen-S4/
-│   ├── P3-Zareena-S2/
-│   └── P5-Kousar-S4/
+│   ├── Patient_01/
+│   ├── Patient_02/
+│   ├── Patient_03/
+│   ├── Patient_04/
+│   └── Patient_05/
 │
 ├── TUMOR_Anonymized_DCM/
 │
 ├── valid/
 │   ├── Normal/
-│   ├── P1-Ruqayya/
-│   ├── P3-Rabia-S4/
+│   ├── Patient_06/
+│   ├── Patient_07/
 │   └── Tumors/
 │
 └── valid_masks/
     ├── Normal/
-    ├── P1-Ruqayya/
-    ├── P3-Rabia-S4/
+    ├── Patient_06/
+    ├── Patient_07/
     └── Tumors/
 ```
 
@@ -358,11 +358,11 @@ are available.
 Known training patients with DICOM/annotation data include:
 
 ```text
-P1-Shukran-S4
-P2-Mumtaz-S2
-P2-Parveen-S4
-P3-Zareena-S2
-P5-Kousar-S4
+Patient_01
+Patient_02
+Patient_03
+Patient_04
+Patient_05
 ```
 
 Do NOT assume validation/test patients have DICOMs.
@@ -570,7 +570,7 @@ spacing
 Example:
 
 ```text
-Patient: P1-Shukran-S4
+Patient: Patient_01
 Slices: 282
 Volume size: 512 × 512 × 282
 Spacing: 0.68 × 0.68 × 2.0 mm
@@ -835,7 +835,7 @@ First implement the entire pipeline for ONE patient.
 Recommended first patient:
 
 ```text
-P1-Shukran-S4
+Patient_01
 ```
 
 or whichever patient has the cleanest DICOM/PNG/JSON correspondence.
@@ -940,13 +940,13 @@ or another format that preserves spatial metadata.
 For example:
 
 ```text
-P1-Shukran-S4_tumor_mask.nii.gz
+Patient_01_tumor_mask.nii.gz
 ```
 
 Also save the original CT volume:
 
 ```text
-P1-Shukran-S4_ct.nii.gz
+Patient_01_ct.nii.gz
 ```
 
 This makes the result easy to inspect in 3D Slicer.
@@ -1017,7 +1017,7 @@ Prefer a format compatible with:
 For example:
 
 ```text
-P1-Shukran-S4_tumor.ply
+Patient_01_tumor.ply
 ```
 
 The mesh should be physically scaled using DICOM spacing.
@@ -1221,10 +1221,10 @@ Recommended structure:
 outputs/
 │
 ├── ground_truth/
-│   └── P1-Shukran-S4/
+│   └── Patient_01/
 │
 └── predictions/
-    └── P1-Shukran-S4/
+    └── Patient_01/
 ```
 
 ---
@@ -1334,7 +1334,7 @@ phase2_3d/
 │   │   └── slice_mapping.csv
 │   │
 │   ├── ground_truth/
-│   │   └── P1-Shukran-S4/
+│   │   └── Patient_01/
 │   │       ├── ct_volume.nii.gz
 │   │       ├── tumor_mask.nii.gz
 │   │       ├── tumor_mesh.ply
@@ -1411,7 +1411,7 @@ The final pipeline should support something similar to:
 
 ```bash
 python pipeline.py \
-    --patient P1-Shukran-S4 \
+    --patient Patient_01 \
     --mode ground_truth
 ```
 
@@ -1419,7 +1419,7 @@ and eventually:
 
 ```bash
 python pipeline.py \
-    --patient P1-Shukran-S4 \
+    --patient Patient_01 \
     --mode prediction
 ```
 
@@ -1427,10 +1427,10 @@ Potential commands:
 
 ```bash
 python audit_dataset.py
-python inspect_dicom.py --patient P1-Shukran-S4
-python map_slices.py --patient P1-Shukran-S4
-python reconstruct_3d.py --patient P1-Shukran-S4
-python visualize_3d.py --patient P1-Shukran-S4
+python inspect_dicom.py --patient Patient_01
+python map_slices.py --patient Patient_01
+python reconstruct_3d.py --patient Patient_01
+python visualize_3d.py --patient Patient_01
 ```
 
 ---
@@ -1450,7 +1450,7 @@ ERROR
 Example:
 
 ```text
-[INFO] Loading patient P1-Shukran-S4
+[INFO] Loading patient Patient_01
 [INFO] Found 282 PNG files
 [INFO] Found 282 JSON files
 [INFO] Found 282 DICOM slices
@@ -2072,7 +2072,7 @@ The final system should eventually allow:
 
 ```bash
 python pipeline.py \
-    --patient P1-Shukran-S4 \
+    --patient Patient_01 \
     --mode ground_truth
 ```
 
@@ -2096,7 +2096,7 @@ Then:
 
 ```bash
 python pipeline.py \
-    --patient P1-Shukran-S4 \
+    --patient Patient_01 \
     --mode prediction
 ```
 

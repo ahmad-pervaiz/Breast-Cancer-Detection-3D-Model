@@ -4,15 +4,20 @@ train_mask_dir: Train_masks
 valid_image_dir: valid
 valid_mask_dir: valid_masks
 test_image_dir: test
+# Informational only (not read by any code - the actual split comes from
+# each image's real folder name, scanned directly by data/build_manifest.py).
+# Anonymized codes shown here match configs/phase2_3d.yaml's patient list;
+# real folder names are not committed to this public repo - see
+# src/future_3d/README.md.
 train_patients:
-- P1-Shukran-S4
-- P2-Mumtaz-S2
-- P2-Parveen-S4
-- P3-Zareena-S2
-- P5-Kousar-S4
+- Patient_01
+- Patient_02
+- Patient_03
+- Patient_04
+- Patient_05
 valid_patients:
-- P1-Ruqayya
-- P3-Rabia-S4
+- Patient_06
+- Patient_07
 valid_extra_groups:
 - Tumors
 manifest_csv: data/manifest.csv

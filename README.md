@@ -34,14 +34,19 @@ FINAL DATASET/
 
 **Patient-level split (fixed, never re-shuffled by this code):**
 
-| Split | Named patients | Generic bucket(s) |
+Named patients are referred to only by anonymized code below (this repo is
+public) - `Patient_01`..`Patient_07`, matching `configs/phase2_3d.yaml`'s
+list (gitignored, real folder names local-only - see
+`src/future_3d/README.md`).
+
+| Split | Named patients (anonymized) | Generic bucket(s) |
 |---|---|---|
-| Train | P1-Shukran-S4, P2-Mumtaz-S2, P2-Parveen-S4, P3-Zareena-S2, P5-Kousar-S4 | Normal |
-| Valid | P1-Ruqayya, P3-Rabia-S4 | Normal, Tumors (different, unnamed patients) |
+| Train | Patient_01, Patient_02, Patient_03, Patient_04, Patient_05 | Normal |
+| Valid | Patient_06, Patient_07 | Normal, Tumors (different, unnamed patients) |
 | Test | *(unknown patients — held out)* | Normal, Tumors |
 
 **Correction (2026-09-10):** an earlier version of this table called
-`P1-Ruqayya`/`P3-Rabia-S4` "DICOM-less". That was wrong — the Phase-2 audit
+`Patient_06`/`Patient_07` "DICOM-less". That was wrong — the Phase-2 audit
 (`bc_tumor_detection/src/future_3d/README.md`) verified both have full
 DICOM correspondence via filename-stem matching against
 `TUMOR_Anonymized_DCM/`, same as the 5 train patients. It's `valid/Tumors`
@@ -95,6 +100,10 @@ bc_tumor_detection/
 of truth for every image/mask/label pair — one row per image, paths stored
 **relative to `dataset_root`** so the same CSV works unchanged on another
 machine (e.g. Kaggle) by just pointing `dataset_root` elsewhere.
+`data/manifest.csv` and `data/audit_report.txt` are gitignored (this repo is
+public and every row embeds a real patient folder name via its file path) -
+run `python data/build_manifest.py` once after cloning to regenerate it
+locally.
 
 ## 4. Installation
 
@@ -135,7 +144,7 @@ python scripts/train.py --config configs/config.yaml
 **Inference on one image:**
 ```bash
 python scripts/inference.py \
-    --input "FINAL DATASET/valid/P1-Ruqayya/example.png" \
+    --input "FINAL DATASET/valid/<patient_folder>/example.png" \
     --checkpoint runs/segmentation/checkpoints/best_model.pth \
     --output runs/segmentation/predictions/single/
 ```
