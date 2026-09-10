@@ -1,0 +1,73 @@
+# Phase-2 (3D CT tumor reconstruction, visualization & measurement) configuration
+# TEMPLATE - this repo is public, so the real config (configs/phase2_3d.yaml,
+# gitignored) is never committed: it contains real patient folder names.
+#
+# Setup: copy this file to configs/phase2_3d.yaml, then replace every `id:`
+# below with the real dataset folder name for that patient (find them by
+# running scripts/phase2_audit_dataset.py's underlying matching logic against
+# your own FINAL DATASET/ copy, or by inspecting Train/ and valid/ directly).
+# Keep `code` values as-is (or renumber, but keep them free of any real name)
+# - `code` is the only identifier that should ever appear outside this file.
+#
+# Does NOT touch configs/config.yaml (Phase-1 2D model config) - kept fully separate.
+#
+# PRIVACY NOTE: this file is the ONLY place in Phase-2 that maps an anonymized
+# `code` to the real dataset folder name (`id`) - it exists purely so scripts
+# can locate source files on disk. Every Phase-2 output (audit reports, CSVs,
+# logs, mesh/volume files, images, videos) must identify patients by `code`
+# only, never by `id`. Do not copy real `id` values into any generated report,
+# filename, or visualization - and never commit the filled-in file.
+
+dataset_root: /path/to/BC_detection_Project/FINAL DATASET
+dicom_dir: TUMOR_Anonymized_DCM          # relative to dataset_root - flat directory, 1100 files
+dicom_inventory_csv: ../dicom_inventory.csv   # relative to dataset_root (lives at project root)
+
+# Only patients with verified DICOM + PNG + Labelme JSON correspondence belong
+# here (confirmed by filename-stem join against TUMOR_Anonymized_DCM/ - see
+# runs/phase2_3d/audit/ for the evidence). Normal/ and valid/Tumors/ have PNG+JSON
+# but NO matching DICOM files and must never be used for 3D reconstruction.
+# `code` is the only identifier that should appear anywhere outside this file.
+patients:
+  - id: REPLACE_WITH_REAL_FOLDER_NAME_1
+    code: Patient_01
+    split: train
+    image_dir: Train/REPLACE_WITH_REAL_FOLDER_NAME_1
+  - id: REPLACE_WITH_REAL_FOLDER_NAME_2
+    code: Patient_02
+    split: train
+    image_dir: Train/REPLACE_WITH_REAL_FOLDER_NAME_2
+  - id: REPLACE_WITH_REAL_FOLDER_NAME_3
+    code: Patient_03
+    split: train
+    image_dir: Train/REPLACE_WITH_REAL_FOLDER_NAME_3
+  - id: REPLACE_WITH_REAL_FOLDER_NAME_4
+    code: Patient_04
+    split: train
+    image_dir: Train/REPLACE_WITH_REAL_FOLDER_NAME_4
+  - id: REPLACE_WITH_REAL_FOLDER_NAME_5
+    code: Patient_05
+    split: train
+    image_dir: Train/REPLACE_WITH_REAL_FOLDER_NAME_5
+  - id: REPLACE_WITH_REAL_FOLDER_NAME_6
+    code: Patient_06
+    split: valid
+    image_dir: valid/REPLACE_WITH_REAL_FOLDER_NAME_6
+  - id: REPLACE_WITH_REAL_FOLDER_NAME_7
+    code: Patient_07
+    split: valid
+    image_dir: valid/REPLACE_WITH_REAL_FOLDER_NAME_7
+
+# First-patient milestone (Section 18 of Project_phase2.txt) - identified by
+# code, resolved against the table above. In this project's actual data,
+# Patient_05 is the only patient whose annotated slices form a single DICOM
+# series end-to-end (see Project_phase2.txt Section 0) - re-verify this
+# still holds for your data before assuming the same code applies.
+first_patient: Patient_05
+
+# Labelme label(s) that denote tumor polygons. Matching is case-insensitive.
+tumor_labels:
+  - tumor
+
+strict_mapping: false   # if true, only VERIFIED-confidence slice mappings are used downstream
+
+output_root: runs/phase2_3d   # relative to project root, follows existing runs/ convention
