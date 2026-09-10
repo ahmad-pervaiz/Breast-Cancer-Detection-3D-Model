@@ -3,3 +3,9 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 kaggle_upload/*.zip
+
+# Contains real patient folder names (the code<->real-name lookup for
+# Phase-2/src/future_3d) - this repo is public, so this file must stay
+# local-only. Copy configs/phase2_3d.example.yaml to configs/phase2_3d.yaml
+# and fill in the real values on each machine that runs the Phase-2 scripts.
+configs/phase2_3d.yaml

@@ -37,8 +37,15 @@ FINAL DATASET/
 | Split | Named patients | Generic bucket(s) |
 |---|---|---|
 | Train | P1-Shukran-S4, P2-Mumtaz-S2, P2-Parveen-S4, P3-Zareena-S2, P5-Kousar-S4 | Normal |
-| Valid | P1-Ruqayya, P3-Rabia-S4 | Normal, Tumors (different, DICOM-less patients) |
+| Valid | P1-Ruqayya, P3-Rabia-S4 | Normal, Tumors (different, unnamed patients) |
 | Test | *(unknown patients — held out)* | Normal, Tumors |
+
+**Correction (2026-09-10):** an earlier version of this table called
+`P1-Ruqayya`/`P3-Rabia-S4` "DICOM-less". That was wrong — the Phase-2 audit
+(`bc_tumor_detection/src/future_3d/README.md`) verified both have full
+DICOM correspondence via filename-stem matching against
+`TUMOR_Anonymized_DCM/`, same as the 5 train patients. It's `valid/Tumors`
+and every `Normal` folder (both splits) that genuinely have no DICOM.
 
 No image is ever moved between splits, and no slice from a training patient
 ever appears in validation, or vice versa — this is checked automatically
