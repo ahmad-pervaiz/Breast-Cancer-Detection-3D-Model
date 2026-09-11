@@ -30,8 +30,8 @@ clearml   # optional experiment tracking - inert unless configs/config.yaml clea
 SimpleITK   # volume construction: preserves spacing/origin/direction (Milestone 5),
             # NIfTI (.nii.gz) read/write for CT + mask volumes (Milestone 5-6)
             # scikit-image (already above) provides marching_cubes for Milestone 7
-# pyvista - NOT installed: Milestones 8-9 (visualization) use matplotlib instead
-# (already above) for static, headless-safe PNG output - this machine's PyVista/VTK
-# offscreen-rendering support was not confirmed. 3D Slicer (external, see Section 27)
-# remains the recommended tool for interactive inspection of the saved .nii.gz volumes.
+pyvista     # real interactive 3D viewing (Section 24) - scripts/phase2_interactive_view.py.
+            # Confirmed working off-screen (headless screenshot) on this machine too;
+            # scripts/phase2_visualize_3d.py's mandatory validation PNGs still use
+            # matplotlib (simpler, zero-dependency-risk default for automated checks).
 # nibabel was evaluated but is redundant - SimpleITK already reads/writes .nii.gz.
