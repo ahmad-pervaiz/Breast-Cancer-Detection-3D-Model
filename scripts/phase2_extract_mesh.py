@@ -55,7 +55,9 @@ def main():
     parser.add_argument("--patient", help="Anonymized patient code, e.g. Patient_05")
     parser.add_argument("--all-patients", action="store_true")
     parser.add_argument("--series-index", type=int, default=None)
+    parser.add_argument("--mode", choices=["ground_truth", "prediction"], default="ground_truth")
     args = parser.parse_args()
+    mode_dir = "ground_truth" if args.mode == "ground_truth" else "predictions"
 
     if not args.patient and not args.all_patients:
         parser.error("specify --patient CODE or --all-patients")
@@ -70,9 +72,9 @@ def main():
 
     n_ok = 0
     for code in codes:
-        ground_truth_dir = cfg.output_root / "ground_truth" / code
+        ground_truth_dir = cfg.output_root / mode_dir / code
         if not ground_truth_dir.exists():
-            logger.warning("[%s] no ground_truth output yet - run phase2_build_volume.py first", code)
+            logger.warning("[%s] no %s output yet - run phase2_build_volume.py first", code, mode_dir)
             continue
         series_dirs = sorted(ground_truth_dir.glob("series_*"))
         for series_dir in series_dirs:

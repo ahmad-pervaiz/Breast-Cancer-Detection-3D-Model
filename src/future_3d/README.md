@@ -11,13 +11,15 @@ one place, `configs/phase2_3d.yaml`, which is used only to locate source
 files on disk and must never itself be copied into a report, image, or
 video.**
 
-**Status: Milestones 1-9 done for all 7 patients, all 26 (patient, series)
-volumes.** Milestone 3's overlay visual validation is done for `Patient_05`
-only (the others rely on the automated per-series fragmentation check below
-instead of a full manual overlay review - see Known limitations). Milestones
-10 (3D Slicer load-check - files are compatible but not yet opened in Slicer
-to confirm), 11 (formal measurements.py with dimensions/diameter), and 12
-(Phase-1 AI-prediction mode) are not started.
+**Status: Milestones 1-9, 11, and 12 done, for all 7 patients, both modes
+(52 series volumes total: 26 ground-truth + 26 AI-prediction).** Milestone
+3's overlay visual validation is done for `Patient_05` only (the others rely
+on the automated per-series fragmentation check below instead of a full
+manual overlay review - see Known limitations). Milestone 10 (3D Slicer
+load-check) is the only one not done - the files are standard NIfTI so they
+*should* load correctly, but 3D Slicer isn't installed on this machine, so
+nobody has actually confirmed it. See `PHASE2_WALKTHROUGH.md` for the full
+milestone-by-milestone table and how to finish Milestone 10 yourself.
 
 ## Setup (first time on any machine)
 
@@ -38,38 +40,55 @@ src/future_3d/
 ├── labelme_io.py      Labelme JSON -> binary mask rasterization
 ├── mapping.py          PNG <-> JSON <-> DICOM matching + confidence rating
 ├── volume_io.py         CT + tumor-mask NIfTI volume construction, per (patient, series)
-└── mesh_io.py             Marching Cubes + PLY/STL export
+├── mesh_io.py             Marching Cubes + PLY/STL export
+├── measurements.py         Milestone 11: volume, bounding box, max Feret diameter
+└── ai_predict_io.py         Milestone 12: Phase-1 checkpoint -> 2D masks, same MaskProvider interface as ground truth
 
 scripts/
 ├── phase2_audit_dataset.py     Milestone 1: full dataset/DICOM audit
 ├── phase2_map_slices.py         Milestone 4: per-patient slice_mapping.csv
 ├── phase2_inspect_dicom.py       Milestone 2: per-series ordering/spacing report
 ├── phase2_visual_validation.py    Milestone 3 (Section 14): mandatory mask/overlay images
-├── phase2_build_volume.py          Milestones 5-6: ct_volume.nii.gz + tumor_mask.nii.gz
+├── phase2_build_volume.py          Milestones 5-6, 12: ct_volume.nii.gz + tumor_mask.nii.gz (--mode ground_truth|prediction)
 ├── phase2_extract_mesh.py           Milestone 7: tumor_mesh.ply / .stl
-└── phase2_visualize_3d.py            Milestones 8-9: 3d_tumor.png / 3d_ct_tumor.png
+├── phase2_visualize_3d.py            Milestones 8-9: 3d_tumor.png / 3d_ct_tumor.png (static)
+├── phase2_interactive_view.py         Real rotate/zoom/pan PyVista window (Section 24)
+└── phase2_measurements.py              Milestone 11: measurements.json
 ```
 
 Run from `bc_tumor_detection/`, `conda activate bc_seg` first. All `--patient`
-flags take the anonymized code; every build/mesh/visualize script also takes
-`--all-patients` to run the whole pipeline in one call:
+flags take the anonymized code; every build/mesh/visualize/measure script
+also takes `--all-patients`, and `--mode ground_truth|prediction` (default
+`ground_truth`; `prediction` needs `--checkpoint` on the build step):
 ```bash
 python scripts/phase2_audit_dataset.py --config configs/phase2_3d.yaml
 python scripts/phase2_inspect_dicom.py --config configs/phase2_3d.yaml --patient Patient_05
 python scripts/phase2_map_slices.py --config configs/phase2_3d.yaml --patient Patient_05 --strict-mapping
 python scripts/phase2_visual_validation.py --config configs/phase2_3d.yaml --patient Patient_05
 
+# Ground-truth mode (Labelme JSON):
 python scripts/phase2_build_volume.py --config configs/phase2_3d.yaml --all-patients
 python scripts/phase2_extract_mesh.py --config configs/phase2_3d.yaml --all-patients
+python scripts/phase2_measurements.py --config configs/phase2_3d.yaml --all-patients
 python scripts/phase2_visualize_3d.py --config configs/phase2_3d.yaml --all-patients
+
+# AI-prediction mode (Phase-1 checkpoint instead of Labelme JSON) - identical
+# downstream steps, just add --mode prediction (and --checkpoint on the build):
+python scripts/phase2_build_volume.py --config configs/phase2_3d.yaml --all-patients \
+    --mode prediction --checkpoint runs/segmentation/checkpoints/best_model.pth
+python scripts/phase2_extract_mesh.py --config configs/phase2_3d.yaml --all-patients --mode prediction
+python scripts/phase2_measurements.py --config configs/phase2_3d.yaml --all-patients --mode prediction
+python scripts/phase2_visualize_3d.py --config configs/phase2_3d.yaml --all-patients --mode prediction
 ```
 
 Outputs land under `runs/phase2_3d/` (audit/, mapping/, validation/,
-ground_truth/<code>/series_NN/), following the same convention as the
-Phase-1 `runs/segmentation/` tree — nothing is ever written into
-`FINAL DATASET/`. Each `ground_truth/<code>/series_NN/` directory holds:
+ground_truth/<code>/series_NN/, predictions/<code>/series_NN/), following
+the same convention as the Phase-1 `runs/segmentation/` tree — nothing is
+ever written into `FINAL DATASET/`, and ground-truth/prediction outputs are
+never mixed in the same directory (Section 30). Each series directory holds:
 `ct_volume.nii.gz`, `tumor_mask.nii.gz`, `tumor_mesh.ply`, `tumor_mesh.stl`,
-`3d_tumor.png`, `3d_ct_tumor.png`, `reconstruction_metadata.json`.
+`3d_tumor.png`, `3d_ct_tumor.png`, `reconstruction_metadata.json`,
+`measurements.json`.
 
 ## Verified findings (see Project_phase2.txt Section 0 for full detail)
 
@@ -124,16 +143,34 @@ Phase-1 `runs/segmentation/` tree — nothing is ever written into
   14-29mm nominal spacing - almost certainly scout/localizer exports, not
   full diagnostic stacks. Their volumes were built (nothing crashes), but
   their `tumor_volume_cm3` should NOT be treated as a reliable physical
-  measurement (Section 32) given how coarsely they're sampled.
+  measurement (Section 32) given how coarsely they're sampled. This is also
+  exactly where AI-mode measurements diverge most from ground truth (see below).
+- **Milestone 11 (measurements) computes bounding box + max Feret diameter on
+  the LARGEST connected component only**, not the whole mask - an early
+  version measured the whole mask and got a nonsensical 288mm "diameter" for
+  `Patient_05` because a small disconnected fragment (see the fragmentation
+  check above) sat far from the main mass. `excluded_fragment_voxels`/
+  `fraction` in each `measurements.json` shows what was left out; total
+  volume still counts every voxel.
+- **Milestone 12 (AI-prediction mode) works end-to-end for all 26 series** -
+  `src/future_3d/ai_predict_io.py` runs Phase-1's checkpoint per-slice and
+  feeds the resized-back-to-native-resolution masks through the *exact same*
+  `build_series_volume` function ground truth uses (`MaskProvider` interface,
+  Section 29). Real numbers, `Patient_05` (the fully-validated single-series
+  case): ground truth 102.3cm³/126.1mm max diameter vs AI-predicted
+  119.2cm³/125.4mm - volume over-predicted ~16% (consistent with the model's
+  known sensitivity>>specificity trade-off from `improving_model.md`), max
+  diameter almost identical. Across all 26 series the model consistently
+  over-predicts volume; diameter agreement is close (usually within ~15%)
+  except on the two sparse scout-like `Patient_07` series noted above, where
+  the model - trained on normal multi-slice CT - performs erratically on
+  atypical 2-slice exports. No formal 3D Dice/IoU comparison was built
+  (Section 31 explicitly defers that past the first milestone).
 
-## Next milestone (not started)
+## Remaining work
 
-Milestone 10: open a saved CT+mask pair in 3D Slicer to confirm axial/
-sagittal/coronal/3D alignment independently of this module's own rendering
-(the files are NIfTI with correct spacing/origin/direction, so they *should*
-load correctly, but this hasn't been done). Then Milestone 11 (a dedicated
-`measurements.py` with documented X/Y/Z extent and max-diameter definitions,
-per Section 33's terminology requirement - `tumor_volume_cm3` alone is
-already saved per series but is not the full Milestone 11 deliverable) and
-Milestone 12 (Phase-1 AI-prediction mode, replacing Labelme JSON with the
-2D model's predicted masks through the same downstream pipeline).
+Milestone 10 only: open a saved CT+mask pair in 3D Slicer to confirm axial/
+sagittal/coronal/3D alignment independently of this module's own rendering.
+The files are NIfTI with correct spacing/origin/direction, so they *should*
+load correctly, but this needs a human with Slicer installed - see
+`PHASE2_WALKTHROUGH.md`.

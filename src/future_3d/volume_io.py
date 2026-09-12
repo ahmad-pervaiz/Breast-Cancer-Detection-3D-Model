@@ -16,7 +16,7 @@ irregularity captured in the returned result rather than silently absorbed.
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import pydicom
@@ -24,6 +24,13 @@ import SimpleITK as sitk
 from scipy import ndimage
 
 from .dicom_io import DicomSliceInfo
+
+# stem -> (rows, cols) -> mask array (uint8 {0,1}) or None if unavailable for
+# that slice. Section 29: ground-truth and AI-prediction modes plug into this
+# exact same signature so the rest of build_series_volume never branches on
+# which mode it's in - see make_ground_truth_mask_provider below and
+# ai_predict_io.make_ai_prediction_mask_provider for the two implementations.
+MaskProvider = Callable[[str, int, int], Optional[np.ndarray]]
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +51,7 @@ class SeriesVolumeResult:
     nominal_z_spacing_mm: float
     irregular_gap_count: int
     gap_values_mm: List[float]
-    slices_missing_json: int
+    slices_missing_mask: int
     tumor_voxel_count: int
     voxel_volume_mm3: float
     tumor_volume_mm3: float
@@ -105,6 +112,19 @@ def _direction_from_iop(iop: Tuple[float, ...]) -> Tuple[float, ...]:
     return tuple(row) + tuple(col) + tuple(normal)
 
 
+def make_ground_truth_mask_provider(stem_to_json: Dict[str, Optional[Path]], tumor_labels: List[str]) -> MaskProvider:
+    """Ground-truth mode: rasterizes each slice's Labelme JSON (Section 12)."""
+    from .labelme_io import labelme_to_mask  # local import: avoids a hard PIL dependency at module load
+
+    def _provider(stem: str, rows: int, cols: int) -> Optional[np.ndarray]:
+        json_path = stem_to_json.get(stem)
+        if json_path is None:
+            return None
+        return labelme_to_mask(json_path, rows, cols, tumor_labels).mask
+
+    return _provider
+
+
 def build_series_volume(
     patient_code: str,
     series_uid: str,
@@ -112,14 +132,16 @@ def build_series_volume(
     ordered_headers: List[DicomSliceInfo],
     ordering_method: str,
     ordering_warnings: List[str],
-    stem_to_json: Dict[str, Optional[Path]],
-    tumor_labels: List[str],
+    mask_provider: MaskProvider,
 ) -> SeriesVolumeResult:
     """Builds the CT volume and the geometrically-matched tumor-mask volume for
     one already-ordered series. `ordered_headers` must be in the final physical
-    slice order (see dicom_io.order_slices) and share one Rows/Columns/PixelSpacing."""
-    from .labelme_io import labelme_to_mask  # local import: avoids a hard PIL dependency at module load
-
+    slice order (see dicom_io.order_slices) and share one Rows/Columns/PixelSpacing.
+    `mask_provider` supplies the 2D mask for each slice by filename stem - see
+    `make_ground_truth_mask_provider` (Labelme JSON) and
+    `ai_predict_io.make_ai_prediction_mask_provider` (Phase-1 model) for the
+    two implementations; this function itself never knows which one it got
+    (Section 29: "the downstream pipeline should be identical")."""
     n = len(ordered_headers)
     rows = ordered_headers[0].rows
     cols = ordered_headers[0].columns
@@ -162,17 +184,16 @@ def build_series_volume(
     ct_image.SetDirection(direction)
 
     mask_slices = []
-    slices_missing_json = 0
+    slices_missing_mask = 0
     for h in ordered_headers:
-        json_path = stem_to_json.get(h.file_path.stem)
-        if json_path is None:
+        mask = mask_provider(h.file_path.stem, rows, cols)
+        if mask is None:
             mask_slices.append(np.zeros((rows, cols), dtype=np.uint8))
-            slices_missing_json += 1
+            slices_missing_mask += 1
             continue
-        result = labelme_to_mask(json_path, rows, cols, tumor_labels)
-        mask_slices.append(result.mask)
-    if slices_missing_json:
-        warnings.append(f"{slices_missing_json}/{n} slice(s) had no matching Labelme JSON - filled with an empty (all-background) mask")
+        mask_slices.append(mask)
+    if slices_missing_mask:
+        warnings.append(f"{slices_missing_mask}/{n} slice(s) had no mask available from the provider - filled with an empty (all-background) mask")
 
     mask_array = np.stack(mask_slices, axis=0).astype(np.uint8)
     mask_image = sitk.GetImageFromArray(mask_array)
@@ -216,7 +237,7 @@ def build_series_volume(
         nominal_z_spacing_mm=nominal_z,
         irregular_gap_count=irregular_gap_count,
         gap_values_mm=gap_values,
-        slices_missing_json=slices_missing_json,
+        slices_missing_mask=slices_missing_mask,
         tumor_voxel_count=tumor_voxel_count,
         voxel_volume_mm3=voxel_volume_mm3,
         tumor_volume_mm3=tumor_volume_mm3,
@@ -252,7 +273,7 @@ def save_series_volume(result: SeriesVolumeResult, out_dir: Path) -> Dict[str, P
         "nominal_z_spacing_mm": result.nominal_z_spacing_mm,
         "irregular_gap_count": result.irregular_gap_count,
         "gap_values_mm": result.gap_values_mm,
-        "slices_missing_json": result.slices_missing_json,
+        "slices_missing_mask": result.slices_missing_mask,
         "mask_voxels": result.tumor_voxel_count,
         "voxel_volume_mm3": result.voxel_volume_mm3,
         "tumor_volume_mm3": result.tumor_volume_mm3,
