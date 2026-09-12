@@ -38,7 +38,9 @@ def main():
     parser.add_argument("--series-index", type=int, default=1)
     parser.add_argument("--with-ct", action="store_true", help="Also show a semi-transparent CT volume rendering (Section 26), not just the tumor mesh")
     parser.add_argument("--screenshot", type=Path, default=None, help="Headless mode: save a screenshot here instead of opening an interactive window")
+    parser.add_argument("--mode", choices=["ground_truth", "prediction"], default="ground_truth")
     args = parser.parse_args()
+    mode_dir = "ground_truth" if args.mode == "ground_truth" else "predictions"
 
     cfg = load_phase2_config(args.config)
     if args.patient not in {p.code for p in cfg.patients}:
@@ -46,7 +48,7 @@ def main():
         logger.error("Unknown patient code %r. Known codes: %s", args.patient, known)
         sys.exit(1)
 
-    series_dir = cfg.output_root / "ground_truth" / args.patient / f"series_{args.series_index:02d}"
+    series_dir = cfg.output_root / mode_dir / args.patient / f"series_{args.series_index:02d}"
     mesh_path = series_dir / "tumor_mesh.ply"
     if not mesh_path.exists():
         logger.error("%s not found - run phase2_build_volume.py + phase2_extract_mesh.py first", mesh_path)
