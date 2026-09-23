@@ -35,3 +35,9 @@ pyvista     # real interactive 3D viewing (Section 24) - scripts/phase2_interact
             # scripts/phase2_visualize_3d.py's mandatory validation PNGs still use
             # matplotlib (simpler, zero-dependency-risk default for automated checks).
 # nibabel was evaluated but is redundant - SimpleITK already reads/writes .nii.gz.
+
+# SAM fine-tuning (optional, src/models/sam_finetune.py) - box-prompted
+# segmentation, decoder-only fine-tune. See configs/sam_finetune.yaml and
+# improving_model.md Tier 5 for why. Needs a manually-downloaded SAM/MedSAM
+# checkpoint too (not pip-installable) - see that config's `sam.checkpoint` comment.
+segment-anything

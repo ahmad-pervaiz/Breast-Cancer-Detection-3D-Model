@@ -80,9 +80,28 @@ like" diversity.
 | 4.1 | Run `scripts/inference.py` against the held-out `test/` set (image-level detection metrics only — no fake masks) | Would confirm whether the mirror-side false-positive pattern (issue #3) also shows up on genuinely unseen patients, or was specific to this validation set | **Done — see changelog. Major finding: one test patient (Amna) is a likely anatomical-level outlier, not a model failure** |
 | 4.2 | Route all future experiment variants through ClearML (already wired, see `WALKTHROUGH.md` §9) | Makes comparing Tier 2/3 variants against this baseline a dashboard lookup instead of manually diffing CSVs | Not tried |
 
+### Tier 5 — SAM box-prompted fine-tune (evolution of the never-tried 3.1)
+| # | Idea | Why | Status |
+|---|---|---|---|
+| 5.1 | Fine-tune SAM's mask decoder only (frozen ~89.7M-param image encoder, starting from MedSAM's medically-pretrained ViT-B weights), given a box prompt derived from the GT mask | Same motivation as 3.1 taken further: 5-7 patients can't teach texture discrimination from scratch, and SAM's pretrained-on-~1B-masks features should generalize better than anything learnable here — directly targets the mirror-side shortcut-learning pattern (issue #3), since it isn't relearning "where tumors tend to be," only "what's in this box." Trades away end-to-end automatic localization: only tumor-positive images are in scope (see `configs/sam_finetune.yaml`), tumor presence stays this project's existing classifier's job | **In progress — code written (`src/data/sam_dataset.py`, `src/models/sam_finetune.py`, `src/training/train_sam.py`, `scripts/train_sam.py`), not yet run. Needs: (1) a downloaded MedSAM/SAM vit_b checkpoint, (2) a Kaggle GPU run (this dev machine has no CUDA) — smoke-tested on CPU only so far.** |
+
 ---
 
 ## Changelog
+
+### Run #5 — SAM decoder fine-tune (pending — not yet run)
+- Code written this session (2026-09-21): `configs/sam_finetune.yaml`,
+  `src/data/sam_dataset.py`, `src/models/sam_finetune.py`,
+  `src/training/train_sam.py`, `scripts/train_sam.py`,
+  `scripts/compare_sam_vs_unet.py`. See Tier 5 above for the design.
+- Not run yet: needs a manually-downloaded MedSAM/SAM `vit_b` checkpoint
+  (`configs/sam_finetune.yaml`'s `sam.checkpoint` comment) and a Kaggle GPU
+  session (this dev machine has no CUDA — `python scripts/train_sam.py
+  --config configs/sam_finetune.yaml --smoke_test` on CPU is the only check
+  so far, verifying the pipeline runs end-to-end, not model quality).
+- **This entry should be replaced with real before/after numbers
+  (`val_dice`/`val_iou`, tumor-positive) once it's actually trained on
+  Kaggle** — same discipline as every other run in this changelog.
 
 ### Run #4 — LR-schedule-tuning branch (2026-08-26, Kaggle T4) — regressed, abandoned
 - Branch: `experiment/lr-schedule-tuning` (never merged to `main`). Changes:

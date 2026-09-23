@@ -1,0 +1,81 @@
+# SAM (Segment Anything) box-prompted fine-tune - decoder-only.
+#
+# Unlike configs/config.yaml (the from-scratch U-Net, which does detection +
+# segmentation end-to-end), this pipeline is box-PROMPTED: it only segments
+# given a box, it does not decide whether a tumor is present. It therefore
+# only ever trains/evaluates on tumor-positive images (label == "Tumor" with
+# a real mask) - see src/data/sam_dataset.py. Tumor presence stays the
+# U-Net/classifier's job; this pipeline is meant to be compared against
+# configs/config.yaml's `tumor_positive_dice`/`tumor_positive_iou` numbers,
+# not its "overall including Normal" ones. See improving_model.md for why.
+dataset_root: /run/media/ahmad-pervaiz/New Volume/BC_detection_Project/FINAL DATASET
+manifest_csv: data/manifest.csv
+
+# Working resolution BEFORE SAM's own resize to 1024x1024 (its ViT image
+# encoder has fixed positional embeddings sized for exactly 1024). 512 = the
+# dataset's native resolution (see README "Dataset inspection findings") -
+# no point downsampling first just to upsample back inside SAM.
+image_size: 512
+mask_interpolation: nearest
+image_interpolation: bilinear
+preserve_aspect_ratio: true
+
+sam:
+  model_type: vit_b   # segment_anything.sam_model_registry key. vit_b only -
+                       # ViT-l/h are much heavier and unnecessary here since
+                       # only the ~4M-param mask decoder is actually trained.
+  # Manual download (not pip-installable, same pattern as this repo already
+  # uses for 3D Slicer - see PHASE2_WALKTHROUGH.md). Recommended: MedSAM's
+  # vit_b checkpoint (already fine-tuned on medical images with box prompts -
+  # see https://github.com/bowang-lab/MedSAM for the download link, subject
+  # to change). Vanilla SAM ViT-B also works as a fallback (natural-image
+  # pretrained only, needs more of this fine-tune to adapt):
+  # https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
+  checkpoint: checkpoints/medsam_vit_b.pth   # gitignored - place the downloaded file here
+  freeze_image_encoder: true   # ~89.7M params - keep frozen, this is the whole
+                                # point (pretrained features > what 5-7 patients can teach)
+  freeze_prompt_encoder: true  # tiny (6.2K params) either way
+  # Box-prompt augmentation: at train time the GT box is padded then jittered
+  # so the decoder learns to tolerate an imprecise prompt (standard SAM
+  # fine-tuning recipe - no real downstream box source will be pixel-perfect).
+  # At validation, padding only (no random jitter) for a reproducible number.
+  box_padding_px: 5
+  box_jitter_px: 10
+
+batch_size: 2   # 1024x1024x3 activations through a ViT-B encoder are far
+                # heavier per-sample than the U-Net's 256x256x1 - kept small
+                # for Kaggle-T4 memory headroom even though the decoder itself is tiny.
+num_workers: 2
+learning_rate: 1.0e-5   # decoder-only fine-tune - much smaller than the U-Net's
+                        # 1e-4, matches published SAM/MedSAM fine-tuning recipes.
+weight_decay: 0.0
+epochs: 50
+seed: 42
+dice_weight: 1.0
+bce_weight: 1.0
+pos_weight: null
+lr_scheduler:
+  name: reduce_on_plateau
+  patience: 5
+  factor: 0.5
+  min_lr: 1.0e-07
+early_stopping:
+  enabled: true
+  patience: 15
+  metric: val_dice
+threshold: 0.5
+min_tumor_area_px: 20
+postprocess:
+  remove_small_components: false   # not the false-positive-blob problem this
+                                    # pipeline has (box-prompted -> no localization
+                                    # shortcut to clean up) - off unless evidence says otherwise
+  min_component_area_px: 100
+checkpoint_dir: runs/sam_segmentation/checkpoints
+log_dir: runs/sam_segmentation/logs
+plot_dir: runs/sam_segmentation/plots
+prediction_dir: runs/sam_segmentation/predictions
+use_amp: true
+clearml:
+  enabled: false
+  project_name: Breast Tumor Segmentation
+  task_name: null
