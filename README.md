@@ -11,11 +11,20 @@ Given a single CT PNG slice, this project:
 1. Predicts whether a tumor is present.
 2. Segments the tumor at pixel level (binary mask: 0 = background, 1 = tumor).
 
-This is phase one of a larger plan. A **future phase** (not implemented here,
-see [`src/future_3d/README.md`](src/future_3d/README.md)) will use the 1,100
-DICOM files already available for 7 of the patients to reconstruct 3D tumor
-volume and physical dimensions. That is explicitly out of scope right now —
-this repo only ever outputs a 2D pixel mask and a pixel count/percentage.
+This is phase one of a larger plan; the 2D pipeline below only ever outputs
+a 2D pixel mask and a pixel count/percentage. **Phase 2** (3D reconstruction
+and physical measurements from the 1,100 DICOM files for 7 patients) is
+implemented separately in `src/future_3d/` + `scripts/phase2_*.py` — see
+[Project status](#project-status) below and
+[`PHASE2_WALKTHROUGH.md`](PHASE2_WALKTHROUGH.md).
+
+## Project status
+
+| Track | Status | Where |
+|---|---|---|
+| **Phase 1 — 2D U-Net** (detection + segmentation) | Done, trained on Kaggle T4. Best validated run: `val_dice` 0.8018, `val_iou` 0.7126 | this README, [`WALKTHROUGH.md`](WALKTHROUGH.md), [`improving_model.md`](improving_model.md) (full experiment changelog incl. failed runs) |
+| **Phase 2 — 3D reconstruction** | 11 of 12 milestones done (CT + tumor volumes, meshes, volume/diameter measurements, ground-truth and AI-prediction modes, all 7 patients). Milestone 10 (opening a result in 3D Slicer) still unverified | [`PHASE2_WALKTHROUGH.md`](PHASE2_WALKTHROUGH.md) |
+| **SAM box-prompted fine-tune** (experimental, Tier 5) | Code written and CPU smoke-tested only — **not trained yet**, no results. Needs a downloaded SAM/MedSAM checkpoint and a Kaggle GPU run | [`SAM_WALKTHROUGH.md`](SAM_WALKTHROUGH.md), `configs/sam_finetune.yaml` |
 
 ## 2. Dataset
 
@@ -29,7 +38,7 @@ FINAL DATASET/
 ├── valid/            Normal/ + 2 patient folders + Tumors/ (other patients, annotated, no DICOM)
 ├── valid_masks/       binary PNG masks, mirrors valid/
 ├── test/              Normal/ + Tumors/ — held-out, NO masks, NO DICOM
-└── TUMOR_Anonymized_DCM/   1,100 DICOM files for the 7 named patients (future 3D phase only)
+└── TUMOR_Anonymized_DCM/   1,100 DICOM files for the 7 named patients (Phase 2 3D reconstruction only)
 ```
 
 **Patient-level split (fixed, never re-shuffled by this code):**
@@ -89,7 +98,7 @@ bc_tumor_detection/
 │   ├── training/              losses, metrics, training loop
 │   ├── inference/predict.py   checkpoint loading + single-image/folder inference
 │   ├── visualization/         plots, prediction montages, overlays
-│   └── future_3d/              placeholder for the later DICOM/3D phase
+│   └── future_3d/              Phase 2: DICOM/3D reconstruction + measurements
 ├── scripts/                   thin CLI entry points (see Usage below)
 └── runs/                       all generated outputs (checkpoints, logs, plots,
                                  predictions) — nothing is ever written into
@@ -200,18 +209,23 @@ training Dice, never any test-set signal.
 - CPU-only training on this machine is slow; expect long full-training runs.
   Kaggle/Colab GPU is recommended for real training (same code, same config,
   just point `dataset_root` at the mounted copy).
-- No physical (mm/volume) tumor size — that requires DICOM pixel spacing and
-  is explicitly deferred to the future 3D phase.
+- The 2D pipeline itself reports no physical (mm/volume) tumor size — that
+  needs DICOM pixel spacing and lives in Phase 2 (see section 9).
 - `valid/Tumors` patients are unknown/unnamed and have no DICOM data — usable
-  for 2D validation only, never for the future 3D reconstruction phase.
+  for 2D validation only, never for 3D reconstruction.
+- The model over-predicts tumor volume in 3D (sensitivity 97.8% vs
+  specificity 86.6% — it errs toward calling more pixels tumor); see
+  `PHASE2_WALKTHROUGH.md` for the measured ground-truth vs AI comparison.
 
-## 9. Future 3D plan (not implemented)
+## 9. 3D reconstruction (Phase 2)
 
-See [`src/future_3d/README.md`](src/future_3d/README.md). Summary:
-`DICOM series → slice ordering → 2D model segmentation → 3D mask → physical
-voxel dimensions (from DICOM pixel spacing/slice thickness) → tumor volume →
-tumor dimensions → 3D visualization`. This uses the 1,100 DICOM files for the
-7 patients that have both DICOM and 2D annotations.
+Implemented — see [`src/future_3d/README.md`](src/future_3d/README.md) and
+[`PHASE2_WALKTHROUGH.md`](PHASE2_WALKTHROUGH.md) for status and limitations.
+Pipeline: `DICOM series → slice ordering → per-slice mask (Labelme JSON, or
+this 2D model in AI-prediction mode) → 3D mask → physical voxel dimensions
+(from DICOM pixel spacing/slice thickness) → tumor volume/diameter → 3D
+mesh + visualization`, for the 7 patients that have both DICOM and 2D
+annotations.
 
 ---
 *Research prototype. Not a clinical diagnostic system. Do not use for medical
